@@ -1,0 +1,132 @@
+# Example custom detection rules for OT PCAP Analyzer
+# ====================================================
+# Copy this file to ~/.ot_pcap_analyzer/rules/ (or pass it with --rules) and
+# adapt the addresses, subnets and limits to YOUR plant. The values below are
+# placeholders: 10.10.5.0/24 is the "engineering subnet", 10.10.5.20 the
+# "maintenance laptop", etc.
+#
+# Every condition under `match` must hold (AND); a list means "any of" (OR).
+# Address lists: plain entries are OR-ed, "!" entries exclude (AND-ed).
+# See README.md in this directory for the full schema.
+
+rules:
+
+  # 1. Writes to Modbus devices must come from the engineering subnet only.
+  - id: OTR-001
+    name: Modbus write from outside the engineering subnet
+    severity: HIGH
+    description: A Modbus write/setpoint was sent by a host that is not in the engineering subnet.
+    recommendation: Identify the source host; only HMIs/EWS in 10.10.5.0/24 may write to PLCs.
+    mitre: [T0836, T0855]
+    match:
+      protocol: MODBUS_TCP
+      op: [WRITE, SETPOINT]
+      function_code: [5, 6, 15, 16, 22, 23]
+      is_request: true
+      src_ip: ["!10.10.5.0/24"]
+
+  # 2. PLC stop / program download / firmware update: only the maintenance laptop.
+  - id: OTR-002
+    name: PLC state or program change from a non-maintenance host
+    severity: CRITICAL
+    description: PLC stop, program download/delete or firmware update outside the maintenance host.
+    recommendation: Verify there is an approved work order; check PLC mode and program checksum.
+    mitre: [T0843, T0858, T0857]
+    match:
+      op: [PLC_STOP, PLC_RESET, "PROGRAM_*", FIRMWARE_UPDATE, MEMORY_CLEAR]
+      src_ip: ["!10.10.5.20"]
+
+  # 3. IEC 60870-5-104 commands to the breaker IOA range 4000-4099 of the substation RTU.
+  - id: OTR-003
+    name: IEC 104 command to critical breaker IOAs
+    severity: HIGH
+    description: A control command targets the circuit-breaker information objects (IOA 4000-4099).
+    mitre: [T0855, T0831]
+    match:
+      protocol: IEC_104
+      op: ["CONTROL_*"]
+      dst_ip: ["192.168.20.10"]
+      target: "IOA=40[0-9]{2}\\b"
+
+  # 4. DNP3 Direct Operate bypasses Select-Before-Operate: unusual in most utilities.
+  - id: OTR-004
+    name: DNP3 direct operate
+    severity: HIGH
+    description: DNP3 Direct Operate (function 5) or Direct Operate No Ack (function 6) observed.
+    mitre: [T0855]
+    match:
+      protocol: DNP3
+      function_code: [5, 6]
+      is_request: true
+
+  # 5. GOOSE frames with the "test" flag set must never appear in production.
+  - id: OTR-005
+    name: IEC 61850 GOOSE with test flag
+    severity: MEDIUM
+    description: A GOOSE publisher sent frames with test=TRUE; subscribers may ignore or mis-handle them.
+    mitre: [T0856]
+    match:
+      protocol: IEC_61850_GOOSE
+      details: {goose_test: true}
+    cooldown_seconds: 600      # one alert per publisher/destination every 10 minutes
+
+  # 6. Burst of writes: 20+ writes in 10 seconds from one host to one PLC.
+  - id: OTR-006
+    name: Burst of write commands to a PLC
+    severity: HIGH
+    description: Many write operations in a short time (scripted manipulation or brute force).
+    mitre: [T0806, T0836]
+    match:
+      operation_type: [WRITE]
+      is_request: true
+    threshold:
+      count: 20
+      seconds: 10
+      group_by: [src_ip, dst_ip]
+    cooldown_seconds: 300
+
+  # 7. Setpoint above the physical limit of the process (e.g. boiler pressure > 12 bar).
+  - id: OTR-007
+    name: Boiler pressure setpoint above physical limit
+    severity: CRITICAL
+    description: A value above 1200 (12.00 bar, x100 scaling) was written to holding register 40100.
+    recommendation: Check the boiler controller immediately and confirm the setpoint with the operator.
+    mitre: [T0836, T0831]
+    match:
+      protocol: MODBUS_TCP
+      dst_ip: ["10.10.1.15"]
+      unit_id: [1]
+      op: [WRITE, SETPOINT]
+      target: "^(HR ?)?40100$|^100$"
+      value_gt: 1200
+
+  # 8. S7comm traffic towards the PLC from anything but the HMI and EWS (CIDR + negation).
+  - id: OTR-008
+    name: S7 communication from an unexpected host
+    severity: MEDIUM
+    description: Only the HMI (10.10.2.5) and the engineering subnet should talk S7comm to PLCs.
+    mitre: [T0886, T0848]
+    match:
+      protocol: [S7COMM, S7COMM_PLUS]
+      dst_port: [102]
+      src_ip: ["!10.10.2.5", "!10.10.5.0/24"]
+
+  # 9. PROFINET DCP Set (rename / re-address a device) from an unknown MAC.
+  - id: OTR-009
+    name: PROFINET DCP set name / IP from unknown station
+    severity: HIGH
+    description: Renaming or re-addressing a PROFINET device can disconnect it from its controller.
+    mitre: [T0855, T0816]
+    match:
+      protocol: PROFINET_DCP
+      op: [SET_NAME, SET_IP, FACTORY_RESET]
+      src_ip: ["!00:1b:1b:aa:bb:cc"]    # MAC of the engineering station
+
+  # 10. Disabled example: keep a rule in the file but switch it off.
+  - id: OTR-010
+    name: Any Modbus diagnostics (noisy, disabled by default)
+    severity: LOW
+    enabled: false
+    match:
+      protocol: MODBUS_TCP
+      function_code: ["0x08"]
