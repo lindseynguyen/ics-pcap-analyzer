@@ -123,6 +123,11 @@ class OTAnalyzer:
             from .storyline import AttackStorylineGenerator
             self._storyline_generator = AttackStorylineGenerator()
 
+        # User-defined detection rules
+        self._rule_engine = None
+        if self.config.detect_anomalies:
+            self._rule_engine = self._load_rule_engine()
+
         # OT Malware Detection & Advanced Threat Scoring
         self._malware_detector = None
         self._advanced_threat_detector = None
@@ -134,6 +139,27 @@ class OTAnalyzer:
             logger.info("OT Malware Detection & Advanced Threat Scoring enabled")
         except ImportError as e:
             logger.warning(f"Advanced threat detection modules not available: {e}")
+
+    def _load_rule_engine(self):
+        """Custom rules from config.rule_paths and ~/.ot_pcap_analyzer/rules (None if no rules)."""
+        from pathlib import Path
+        from .detection.rules_engine import RuleEngine
+        paths = []
+        default_dir = Path.home() / ".ot_pcap_analyzer" / "rules"
+        if self.config.load_default_rules and default_dir.is_dir():
+            paths.append(default_dir)
+        paths.extend(self.config.rule_paths or [])
+        if not paths:
+            return None
+        try:
+            engine = RuleEngine.from_paths(paths)
+        except Exception as e:  # never let a rules problem stop the analysis
+            logger.warning(f"Custom rules not loaded: {e}")
+            return None
+        if len(engine):
+            logger.info(f"Loaded {len(engine)} custom detection rule(s)")
+            return engine
+        return None
 
     def _normalize_timestamp(self, ts: float) -> Optional[float]:
         """
@@ -715,6 +741,11 @@ class OTAnalyzer:
                 if anomaly:
                     self._add_anomaly(anomaly, related_event=event)
 
+            # User-defined rules see every event (including ones not stored)
+            if self._rule_engine is not None:
+                for anomaly in self._rule_engine.evaluate(event):
+                    self._add_anomaly(anomaly, related_event=event, apply_baseline=False)
+
     MAX_ANOMALIES = 100_000
     DEDUP_WINDOW = 60.0  # seconds within which identical alerts are merged
 
@@ -782,6 +813,16 @@ class OTAnalyzer:
             self.threat_detector.train_ml_model(self.ot_events)
             for event, ml_anomaly in self.threat_detector.detect_ml_anomalies(self.ot_events):
                 self._add_anomaly(ml_anomaly, related_event=event)
+
+        # Behaviour profiling: compare the rest of the capture with its first part
+        if self.config.detect_anomalies and self.config.enable_behavior_profiling and self.ot_events:
+            try:
+                from .detection.behavior import BehaviorProfiler
+                profiler = BehaviorProfiler(learning_fraction=self.config.behavior_learning_fraction)
+                for anomaly in profiler.analyze(self.ot_events):
+                    self._add_anomaly(anomaly, apply_baseline=False)
+            except Exception as e:
+                logger.warning(f"Behaviour profiling failed: {e}")
 
         # OT Malware Detection
         if self._malware_detector and self.ot_events:

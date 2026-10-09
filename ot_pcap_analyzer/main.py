@@ -14,7 +14,7 @@ from .analyzer import OTAnalyzer
 
 
 def run_cli(pcap_file: str, output: str = None, max_packets: int = None,
-            enable_advanced: bool = False):
+            enable_advanced: bool = False, rule_paths=None, behavior: bool = True):
     """Run CLI analysis
 
     Args:
@@ -35,6 +35,8 @@ def run_cli(pcap_file: str, output: str = None, max_packets: int = None,
         enable_correlation=enable_advanced,
         enable_baseline=enable_advanced,
         enable_storyline=enable_advanced,
+        enable_behavior_profiling=behavior,
+        rule_paths=list(rule_paths or []),
     )
 
     analyzer = OTAnalyzer(config)
@@ -138,6 +140,9 @@ Examples:
 
   # Limit packet count
   python -m ot_pcap_analyzer --cli capture.pcap -m 100000
+
+  # Add your own detection rules (YAML/JSON file or folder; see examples/rules)
+  python -m ot_pcap_analyzer --cli capture.pcap --rules my_rules.yml
         """
     )
 
@@ -151,13 +156,19 @@ Examples:
                        help="Maximum packets to analyze")
     parser.add_argument("--advanced", action="store_true",
                        help="Enable advanced features (correlation, baseline, storyline)")
+    parser.add_argument("--rules", action="append", metavar="PATH", default=[],
+                       help="Custom detection rules (YAML/JSON file or directory); repeatable. "
+                            "~/.ot_pcap_analyzer/rules is always loaded when it exists")
+    parser.add_argument("--no-behavior", action="store_true",
+                       help="Disable behaviour profiling (new talkers, polling and value anomalies)")
     parser.add_argument("--version", action="version",
                        version=f"%(prog)s {VERSION}")
 
     args = parser.parse_args()
 
     if args.cli:
-        run_cli(args.cli, args.output, args.max_packets, args.advanced)
+        run_cli(args.cli, args.output, args.max_packets, args.advanced,
+                rule_paths=args.rules, behavior=not args.no_behavior)
     elif args.gui:
         run_gui()
     else:

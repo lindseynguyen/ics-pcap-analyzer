@@ -42,6 +42,9 @@ class OTEvent:
     sequence_id: int = 0
     time_since_last_packet: float = 0.0
     payload_change_rate: float = 0.0
+    # Structured, protocol-independent facts used by the detection rules
+    # (see ot_pcap_analyzer/protocols/base.py for the common keys).
+    details: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -474,6 +477,14 @@ class AnalyzerConfig:
     enable_storyline: bool = True            # Storyline generation
     max_storylines: int = 100                # Max storylines to keep
 
+    # Behaviour profiling (new talkers / function codes, polling, value ranges)
+    enable_behavior_profiling: bool = True
+    behavior_learning_fraction: float = 0.3  # share of the capture used to learn "normal"
+
+    # User-defined detection rules (YAML/JSON files or directories)
+    rule_paths: List[str] = field(default_factory=list)
+    load_default_rules: bool = True          # also load ~/.ot_pcap_analyzer/rules
+
     def __post_init__(self):
         """Validate configuration parameters"""
         # Validate positive integers
@@ -493,4 +504,7 @@ class AnalyzerConfig:
             raise ValueError(f"correlation_time_window must be positive, got {self.correlation_time_window}")
         if self.baseline_learning_period <= 0:
             raise ValueError(f"baseline_learning_period must be positive, got {self.baseline_learning_period}")
+        if not 0 < self.behavior_learning_fraction < 1:
+            raise ValueError(
+                f"behavior_learning_fraction must be between 0 and 1, got {self.behavior_learning_fraction}")
 

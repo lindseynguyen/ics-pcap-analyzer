@@ -26,12 +26,15 @@ class OTProtocol(Enum):
     IEC_104 = auto()
     IEC_61850_MMS = auto()
     IEC_61850_GOOSE = auto()
+    IEC_61850_SV = auto()
+    C37_118 = auto()
     PROFINET_DCP = auto()
     PROFINET_RT = auto()
     MQTT = auto()
     COAP = auto()
     FINS = auto()
     MELSEC = auto()
+    PROFINET_CM = auto()
     UNKNOWN = auto()
 
 
