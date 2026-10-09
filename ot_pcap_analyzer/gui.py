@@ -30,6 +30,7 @@ except ImportError:
 
 if HAS_PYQT5:
     from .version import VERSION
+    from . import gui_style
     from .models import AnalyzerConfig
     from .analyzer import OTAnalyzer
     from .utils import timestamp, utc_str, logger
@@ -88,13 +89,16 @@ if HAS_PYQT5:
             self.analyzer = None
             self.worker = None
             self.theme_manager = SOCThemeManager()
+            self._views_filled = False
+            gui_style.install()
 
             self.init_ui()
 
         def init_ui(self):
             """Initialize the UI"""
-            self.setWindowTitle(f"OT PCAP Analyzer v{VERSION} - SOC Edition")
-            self.setMinimumSize(1400, 900)
+            self.setWindowTitle(f"ICS PCAP Analyzer {VERSION}")
+            self.setMinimumSize(1200, 760)
+            self.resize(1440, 900)
 
             # Setup keyboard shortcuts
             self._setup_keyboard_shortcuts()
@@ -133,6 +137,8 @@ if HAS_PYQT5:
 
             # Add all views
             self.dashboard_view = DashboardView(self.theme_manager)
+            if hasattr(self.dashboard_view, "navigate_requested"):
+                self.dashboard_view.navigate_requested.connect(self.sidebar.set_active_nav)
             self.content_stack.addWidget(self.dashboard_view)
 
             self.assets_view = AssetClassificationView(self.theme_manager)
@@ -175,6 +181,8 @@ if HAS_PYQT5:
             # History
             if HAS_INTEL_DB:
                 self.history_view = DatabaseHistoryPanel()
+                if hasattr(self.history_view, "reanalyze_requested"):
+                    self.history_view.reanalyze_requested.connect(self.start_analysis)
             else:
                 self.history_view = self._create_placeholder("Analysis History")
             self.content_stack.addWidget(self.history_view)
@@ -228,6 +236,11 @@ if HAS_PYQT5:
             # Ctrl+D: Toggle dark/light theme
             shortcut_theme = QShortcut(QKeySequence("Ctrl+D"), self)
             shortcut_theme.activated.connect(self._toggle_theme)
+
+            # Ctrl+= / Ctrl++ / Ctrl+-: text size
+            for seq, slot in (("Ctrl+=", "_on_zoom_in"), ("Ctrl++", "_on_zoom_in"), ("Ctrl+-", "_on_zoom_out")):
+                sc = QShortcut(QKeySequence(seq), self)
+                sc.activated.connect(lambda name=slot: getattr(self.sidebar, name)())
 
         def _focus_search(self):
             """Show global search bar with current view's table"""
@@ -308,8 +321,16 @@ if HAS_PYQT5:
             self.content_stack.setCurrentIndex(index)
 
         def apply_theme(self):
-            """Apply current theme to all widgets"""
-            self.setStyleSheet(self.theme_manager.get_stylesheet())
+            """Apply the current theme (and font scale) to the whole application."""
+            app = QApplication.instance()
+            gui_style.install()
+            gui_style.ENGINE.set_theme(self.theme_manager.current_theme)
+            if app is not None:
+                app.setPalette(gui_style.ENGINE.qpalette())
+                app.setStyleSheet(self.theme_manager.get_stylesheet())
+                gui_style.apply_theme(app)
+            if hasattr(self, "top_bar"):
+                self.top_bar.update_theme()
 
             # Update sidebar with theme colors and font scale
             if hasattr(self.sidebar, 'update_theme'):
@@ -325,6 +346,14 @@ if HAS_PYQT5:
             for view in all_views:
                 if hasattr(view, 'update_theme'):
                     view.update_theme()
+
+            # Table and graph colours are set while the views are filled: refill them.
+            worker_running = bool(self.worker and self.worker.isRunning())
+            if self.analyzer is not None and not worker_running and getattr(self, "_views_filled", False):
+                try:
+                    self._populate_views(self.analyzer.get_summary(), show_progress=False)
+                except Exception as e:  # never let a cosmetic refresh break the UI
+                    logger.warning(f"Theme refresh failed: {e}")
 
         def _create_file_dialog(self, mode: str = "open", caption: str = "",
                                  directory: str = "", filter_str: str = "") -> QFileDialog:
@@ -389,6 +418,19 @@ if HAS_PYQT5:
             file_path = dialog.selectedFiles()[0] if dialog.selectedFiles() else None
             if not file_path:
                 return
+            self.start_analysis(file_path)
+
+        def start_analysis(self, file_path: str):
+            """Analyze ``file_path`` in a worker thread (used by Open and by Scan History)."""
+            import os
+            if self.worker and self.worker.isRunning():
+                QMessageBox.information(self, "Analysis running",
+                                        "Please wait for the current analysis to finish or cancel it.")
+                return
+            if not os.path.isfile(file_path):
+                QMessageBox.warning(self, "File not found",
+                                    f"The capture file is no longer available:\n{file_path}")
+                return
 
             # Initialize analyzer (fresh instance for new analysis)
             config = AnalyzerConfig()
@@ -446,48 +488,7 @@ if HAS_PYQT5:
                 summary.get('DURATION_STR', '-')
             )
 
-            # Update views one-by-one with processEvents to keep UI alive
-            self.top_bar.set_status("Populating dashboard...", "processing")
-            QApplication.processEvents()
-            self.dashboard_view.update_dashboard(summary)
-            self.dashboard_view.update_alerts(self.analyzer.anomalies)
-
-            self.top_bar.set_status("Populating assets...", "processing")
-            QApplication.processEvents()
-            self.assets_view.update_assets(self.analyzer)
-
-            self.top_bar.set_status("Populating anomalies...", "processing")
-            QApplication.processEvents()
-            self.anomalies_view.update_anomalies(self.analyzer.anomalies)
-
-            self.top_bar.set_status("Populating OT events...", "processing")
-            QApplication.processEvents()
-            self.ot_events_view.update_events(self.analyzer.ot_events)
-
-            self.top_bar.set_status("Building attack flow...", "processing")
-            QApplication.processEvents()
-            if hasattr(self.attack_flow_view, 'update_from_analyzer'):
-                self.attack_flow_view.update_from_analyzer(self.analyzer)
-            elif hasattr(self.attack_flow_view, 'update_attack_flow'):
-                chain = self.analyzer.attack_chains[0] if self.analyzer.attack_chains else None
-                storyline = self.analyzer.storylines[0] if self.analyzer.storylines else None
-                all_assets = self.analyzer.assets if hasattr(self.analyzer, 'assets') else None
-                self.attack_flow_view.update_attack_flow(chain, storyline, all_assets)
-
-            self.top_bar.set_status("Extracting IOCs...", "processing")
-            QApplication.processEvents()
-            if HAS_IOC_PANEL and hasattr(self.ioc_view, 'update_iocs'):
-                self.ioc_view.update_iocs(self.analyzer)
-
-            self.top_bar.set_status("Building incident stories...", "processing")
-            QApplication.processEvents()
-            if HAS_INCIDENT_TAB and hasattr(self.incidents_view, 'update_incident_view'):
-                self.incidents_view.update_incident_view(self.analyzer)
-
-            self.top_bar.set_status("Building MITRE ATT&CK matrix...", "processing")
-            QApplication.processEvents()
-            if hasattr(self.threat_model_view, 'update_from_analyzer'):
-                self.threat_model_view.update_from_analyzer(self.analyzer)
+            self._populate_views(summary)
 
             # Auto-enrich and DB save in background thread (avoid blocking GUI)
             if HAS_INTEL_DB:
@@ -499,6 +500,49 @@ if HAS_PYQT5:
                 f"Analysis complete: {summary.get('PACKETS_PARSED', 0):,} packets, "
                 f"{summary.get('ANOMALIES_DETECTED', 0)} anomalies detected"
             )
+
+        def _populate_views(self, summary, show_progress: bool = True):
+            """Fill every view from the current analyzer (also used after a theme switch)."""
+            def step(message):
+                if show_progress:
+                    self.top_bar.set_status(message, "processing")
+                QApplication.processEvents()
+            # one view at a time, letting the UI breathe in between
+            step("Populating dashboard...")
+            self.dashboard_view.update_dashboard(summary)
+            self.dashboard_view.update_alerts(self.analyzer.anomalies)
+
+            step("Populating assets...")
+            self.assets_view.update_assets(self.analyzer)
+
+            step("Populating anomalies...")
+            self.anomalies_view.update_anomalies(self.analyzer.anomalies)
+
+            step("Populating OT events...")
+            self.ot_events_view.update_events(self.analyzer.ot_events)
+
+            step("Building attack flow...")
+            if hasattr(self.attack_flow_view, 'update_from_analyzer'):
+                self.attack_flow_view.update_from_analyzer(self.analyzer)
+            elif hasattr(self.attack_flow_view, 'update_attack_flow'):
+                chain = self.analyzer.attack_chains[0] if self.analyzer.attack_chains else None
+                storyline = self.analyzer.storylines[0] if self.analyzer.storylines else None
+                all_assets = self.analyzer.assets if hasattr(self.analyzer, 'assets') else None
+                self.attack_flow_view.update_attack_flow(chain, storyline, all_assets)
+
+            step("Extracting IOCs...")
+            if HAS_IOC_PANEL and hasattr(self.ioc_view, 'update_iocs'):
+                self.ioc_view.update_iocs(self.analyzer)
+
+            step("Building incident stories...")
+            if HAS_INCIDENT_TAB and hasattr(self.incidents_view, 'update_incident_view'):
+                self.incidents_view.update_incident_view(self.analyzer)
+
+            step("Building MITRE ATT&CK matrix...")
+            if hasattr(self.threat_model_view, 'update_from_analyzer'):
+                self.threat_model_view.update_from_analyzer(self.analyzer)
+
+            self._views_filled = True
 
         def on_analysis_error(self, error_msg: str):
             """Handle analysis error"""
@@ -534,7 +578,7 @@ if HAS_PYQT5:
             # Cache references to avoid accessing self from thread
             analyzer_anomalies = list(self.analyzer.anomalies) if self.analyzer else []
             analyzer_ref = self.analyzer
-            pcap_file = summary.get('CAPTURE_FILE', 'unknown')
+            pcap_file = getattr(self.analyzer, 'capture_path', '') or summary.get('CAPTURE_FILE', 'unknown')
 
             # Check if we have the required views (do this in main thread)
             has_threat_intel = hasattr(self, 'threat_intel_view') and hasattr(self.threat_intel_view, 'enrich_anomalies_data')
@@ -612,6 +656,8 @@ if HAS_PYQT5:
         import sys
         app = QApplication(sys.argv)
         app.setStyle('Fusion')
+        app.setApplicationName("ICS PCAP Analyzer")
+        gui_style.install()
 
         window = MainWindow()
         window.show()

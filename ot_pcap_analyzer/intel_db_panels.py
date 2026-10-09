@@ -20,10 +20,11 @@ try:
         QLineEdit, QGroupBox, QTableWidget, QTableWidgetItem,
         QHeaderView, QComboBox, QTextEdit, QMessageBox, QTabWidget,
         QFormLayout, QCheckBox, QSpinBox, QFrame, QFileDialog,
-        QProgressBar, QSplitter
+        QProgressBar, QSplitter, QDialog, QDialogButtonBox, QAbstractItemView,
+        QStackedWidget, QMenu
     )
-    from PyQt5.QtCore import Qt, QThread, pyqtSignal
-    from PyQt5.QtGui import QFont
+    from PyQt5.QtCore import Qt, QThread, pyqtSignal, QSettings
+    from PyQt5.QtGui import QFont, QColor
     HAS_PYQT5 = True
 except ImportError:
     HAS_PYQT5 = False
@@ -438,24 +439,94 @@ if HAS_PYQT5:
     # DATABASE HISTORY PANEL
     # =========================================================================
 
+    class HistorySettingsDialog(QDialog):
+        """Privacy settings for the local scan history."""
+
+        def __init__(self, enabled: bool, retention_days: int, db_path: str, parent=None):
+            super().__init__(parent)
+            self.setWindowTitle("Scan history settings")
+            self.setMinimumWidth(460)
+            lay = QVBoxLayout(self)
+            lay.setSpacing(14)
+            lay.setContentsMargins(20, 18, 20, 16)
+
+            title = QLabel("Scan history")
+            title.setObjectName("ValueMedium")
+            lay.addWidget(title)
+            info = QLabel(
+                "Results are stored only on this computer. They can contain internal IP "
+                "addresses and plant details, so keep them only as long as you need them.")
+            info.setWordWrap(True)
+            info.setObjectName("Muted")
+            lay.addWidget(info)
+
+            self.enabled_box = QCheckBox("Save every analysis to history")
+            self.enabled_box.setChecked(enabled)
+            lay.addWidget(self.enabled_box)
+
+            row = QHBoxLayout()
+            row.addWidget(QLabel("Automatically delete scans older than"))
+            self.retention_spin = QSpinBox()
+            self.retention_spin.setRange(0, 3650)
+            self.retention_spin.setSuffix(" days")
+            self.retention_spin.setSpecialValueText("never")
+            self.retention_spin.setValue(max(0, int(retention_days)))
+            row.addWidget(self.retention_spin)
+            row.addStretch()
+            lay.addLayout(row)
+
+            where = QLabel(f"Database: {db_path}")
+            where.setObjectName("Muted")
+            where.setWordWrap(True)
+            where.setTextInteractionFlags(Qt.TextSelectableByMouse)
+            lay.addWidget(where)
+
+            buttons = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
+            buttons.button(QDialogButtonBox.Save).setObjectName("BtnPrimary")
+            buttons.accepted.connect(self.accept)
+            buttons.rejected.connect(self.reject)
+            lay.addWidget(buttons)
+
+        def values(self):
+            return self.enabled_box.isChecked(), self.retention_spin.value()
+
     class DatabaseHistoryPanel(QWidget):
         """
-        Panel for browsing analysis history from the database.
+        Scan history: every analysis saved locally, with details, comparison,
+        re-analysis, export and deletion (single, selected, all, or by age).
         """
 
-        session_selected = pyqtSignal(str)  # Emitted when a session is selected
+        session_selected = pyqtSignal(str)
+        reanalyze_requested = pyqtSignal(str)       # capture path
+        history_changed = pyqtSignal()              # emitted from the saving thread
 
-        def __init__(self, parent=None):
+        SETTINGS_ORG, SETTINGS_APP = "OTAnalyzer", "SOCGUI"
+        PERIODS = [("All time", None), ("Last 7 days", 7), ("Last 30 days", 30), ("Last 90 days", 90)]
+
+        def __init__(self, parent=None, database=None, settings=None):
             super().__init__(parent)
-
-            # Lazy load database
-            self._database = None
-
+            self._database = database
+            self._sessions: List[Dict] = []
+            self.settings = settings if settings is not None else QSettings(self.SETTINGS_ORG, self.SETTINGS_APP)
+            self.history_changed.connect(self._load_sessions)
             self._init_ui()
+            self._apply_retention()
+            self._load_sessions()
+
+        # ---------------------------------------------------------- settings
+        @property
+        def history_enabled(self) -> bool:
+            return str(self.settings.value("history/enabled", "true")).lower() in ("true", "1")
+
+        @property
+        def retention_days(self) -> int:
+            try:
+                return int(self.settings.value("history/retention_days", 0))
+            except (TypeError, ValueError):
+                return 0
 
         @property
         def database(self):
-            """Lazy load database module."""
             if self._database is None:
                 try:
                     from .database import AnalysisDatabase
@@ -464,386 +535,595 @@ if HAS_PYQT5:
                     logger.warning(f"Database not available: {e}")
             return self._database
 
+        # ---------------------------------------------------------------- UI
         def _init_ui(self):
-            """Initialize UI components."""
-            layout = QVBoxLayout(self)
-            layout.setSpacing(12)
+            from .gui_components import BarList, Card, KpiCard
+            root = QVBoxLayout(self)
+            root.setContentsMargins(28, 22, 28, 20)
+            root.setSpacing(14)
 
-            # Header
-            header = QLabel("📚 Analysis History Database")
-            header.setStyleSheet("font-size: 20px; font-weight: bold; color: #bc8cff;")
-            layout.addWidget(header)
+            head = QHBoxLayout()
+            titles = QVBoxLayout()
+            titles.setSpacing(2)
+            title = QLabel("Scan history")
+            title.setObjectName("PageTitle")
+            titles.addWidget(title)
+            self.storage_label = QLabel("")
+            self.storage_label.setObjectName("PageSubtitle")
+            titles.addWidget(self.storage_label)
+            head.addLayout(titles, 1)
+            self.import_btn = QPushButton("Import…")
+            self.import_btn.setToolTip("Import a scan exported as JSON")
+            self.import_btn.clicked.connect(self._import_session)
+            head.addWidget(self.import_btn, 0, Qt.AlignTop)
+            self.settings_btn = QPushButton("Settings…")
+            self.settings_btn.setToolTip("Turn history on/off and set automatic clean-up")
+            self.settings_btn.clicked.connect(self._open_settings)
+            head.addWidget(self.settings_btn, 0, Qt.AlignTop)
+            self.clear_btn = QPushButton("Delete all history")
+            self.clear_btn.setObjectName("BtnDanger")
+            self.clear_btn.clicked.connect(self._delete_all)
+            head.addWidget(self.clear_btn, 0, Qt.AlignTop)
+            root.addLayout(head)
 
-            # Toolbar
-            toolbar = self._create_toolbar()
-            layout.addWidget(toolbar)
+            self.disabled_banner = QLabel(
+                "History is turned off — new analyses are not saved. Change this in Settings.")
+            self.disabled_banner.setObjectName("RiskMedium")
+            self.disabled_banner.setVisible(False)
+            root.addWidget(self.disabled_banner)
 
-            # Splitter for sessions and details
-            splitter = QSplitter(Qt.Vertical)
-
-            # Sessions table
-            sessions_group = self._create_sessions_group()
-            splitter.addWidget(sessions_group)
-
-            # Details tabs
-            details_widget = self._create_details_widget()
-            splitter.addWidget(details_widget)
-
-            splitter.setSizes([300, 400])
-            layout.addWidget(splitter)
-
-            # Statistics
-            stats_group = self._create_stats_group()
-            layout.addWidget(stats_group)
-
-            # Load initial data
-            self._load_sessions()
-
-        def _create_toolbar(self) -> QWidget:
-            """Create toolbar with actions."""
-            toolbar = QWidget()
-            layout = QHBoxLayout(toolbar)
-            layout.setContentsMargins(0, 0, 0, 0)
-
-            refresh_btn = QPushButton("🔄 Refresh")
-            refresh_btn.clicked.connect(self._load_sessions)
-            layout.addWidget(refresh_btn)
-
-            export_btn = QPushButton("📤 Export Session")
-            export_btn.clicked.connect(self._export_session)
-            layout.addWidget(export_btn)
-
-            import_btn = QPushButton("📥 Import Session")
-            import_btn.clicked.connect(self._import_session)
-            layout.addWidget(import_btn)
-
-            layout.addStretch()
-
-            # Search
-            layout.addWidget(QLabel("🔍 Search IOC:"))
+            tools = QHBoxLayout()
             self.search_input = QLineEdit()
-            self.search_input.setPlaceholderText("IP, hash, domain...")
-            self.search_input.setMaximumWidth(200)
-            self.search_input.returnPressed.connect(self._search_iocs)
-            layout.addWidget(self.search_input)
+            self.search_input.setPlaceholderText("Search by capture file name…")
+            self.search_input.setClearButtonEnabled(True)
+            self.search_input.setMaximumWidth(320)
+            self.search_input.textChanged.connect(self._load_sessions)
+            tools.addWidget(self.search_input)
+            self.period_combo = QComboBox()
+            for label, _ in self.PERIODS:
+                self.period_combo.addItem(label)
+            self.period_combo.currentIndexChanged.connect(self._load_sessions)
+            tools.addWidget(self.period_combo)
+            tools.addStretch()
+            self.count_label = QLabel("")
+            self.count_label.setObjectName("Muted")
+            tools.addWidget(self.count_label)
+            root.addLayout(tools)
 
-            search_btn = QPushButton("Search")
-            search_btn.clicked.connect(self._search_iocs)
-            layout.addWidget(search_btn)
+            splitter = QSplitter(Qt.Horizontal)
+            splitter.setChildrenCollapsible(False)
+            splitter.setHandleWidth(16)
+            splitter.setStyleSheet("QSplitter::handle { background: transparent; }")
 
-            return toolbar
-
-        def _create_sessions_group(self) -> QGroupBox:
-            """Create sessions table."""
-            group = QGroupBox("📋 Analysis Sessions")
-            layout = QVBoxLayout(group)
-
+            # sessions list
             self.sessions_table = QTableWidget()
-            self.sessions_table.setColumnCount(6)
-            self.sessions_table.setHorizontalHeaderLabels([
-                "Session ID", "PCAP File", "Status", "Packets", "Anomalies", "Date"
-            ])
-            self.sessions_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
-            self.sessions_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)  # PCAP File stretches
+            self.sessions_table.setColumnCount(5)
+            self.sessions_table.setHorizontalHeaderLabels(["Capture", "Scanned", "Packets", "Alerts", "Critical"])
+            hdr = self.sessions_table.horizontalHeader()
+            hdr.setSectionResizeMode(QHeaderView.ResizeToContents)
+            hdr.setSectionResizeMode(0, QHeaderView.Stretch)
+            hdr.setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+            hdr.setMinimumSectionSize(64)
+            self.sessions_table.verticalHeader().setVisible(False)
+            self.sessions_table.setShowGrid(False)
             self.sessions_table.setAlternatingRowColors(True)
-            self.sessions_table.setSelectionBehavior(QTableWidget.SelectRows)
-            self.sessions_table.cellClicked.connect(self._on_session_selected)
-            layout.addWidget(self.sessions_table)
+            self.sessions_table.setSelectionBehavior(QAbstractItemView.SelectRows)
+            self.sessions_table.setSelectionMode(QAbstractItemView.ExtendedSelection)
+            self.sessions_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+            self.sessions_table.setContextMenuPolicy(Qt.CustomContextMenu)
+            self.sessions_table.customContextMenuRequested.connect(self._session_menu)
+            self.sessions_table.itemSelectionChanged.connect(self._on_selection_changed)
+            self.sessions_table.setMinimumWidth(500)
+            splitter.addWidget(self.sessions_table)
 
-            return group
+            # detail area: empty / one scan / comparison / many
+            self.detail_stack = QStackedWidget()
+            self.empty_label = QLabel(
+                "No scans yet.\nOpen a PCAP file — each analysis is saved here automatically.")
+            self.empty_label.setAlignment(Qt.AlignCenter)
+            self.empty_label.setObjectName("Muted")
+            self.detail_stack.addWidget(self.empty_label)                 # 0
 
-        def _create_details_widget(self) -> QWidget:
-            """Create details tabs widget."""
+            detail = QWidget()
+            dl = QVBoxLayout(detail)
+            dl.setContentsMargins(0, 0, 0, 0)
+            dl.setSpacing(12)
+            top = QHBoxLayout()
+            names = QVBoxLayout()
+            names.setSpacing(2)
+            self.detail_title = QLabel("")
+            self.detail_title.setObjectName("ValueMedium")
+            self.detail_title.setTextFormat(Qt.PlainText)
+            names.addWidget(self.detail_title)
+            self.detail_sub = QLabel("")
+            self.detail_sub.setObjectName("Muted")
+            self.detail_sub.setTextFormat(Qt.PlainText)
+            self.detail_sub.setTextInteractionFlags(Qt.TextSelectableByMouse)
+            self.detail_sub.setWordWrap(True)
+            names.addWidget(self.detail_sub)
+            top.addLayout(names, 1)
+            self.reanalyze_btn = QPushButton("Analyze again")
+            self.reanalyze_btn.setObjectName("BtnPrimary")
+            self.reanalyze_btn.clicked.connect(self._reanalyze)
+            top.addWidget(self.reanalyze_btn, 0, Qt.AlignTop)
+            self.export_btn = QPushButton("Export…")
+            self.export_btn.clicked.connect(self._export_session)
+            top.addWidget(self.export_btn, 0, Qt.AlignTop)
+            self.delete_btn = QPushButton("Delete")
+            self.delete_btn.setObjectName("BtnDanger")
+            self.delete_btn.clicked.connect(self._delete_selected)
+            top.addWidget(self.delete_btn, 0, Qt.AlignTop)
+            dl.addLayout(top)
+
+            kpis = QHBoxLayout()
+            kpis.setSpacing(10)
+            self.kpi_packets = KpiCard("Packets", "accent")
+            self.kpi_alerts = KpiCard("Alerts", "medium")
+            self.kpi_critical = KpiCard("Critical", "critical")
+            self.kpi_iocs = KpiCard("IOCs", "purple")
+            for k in (self.kpi_packets, self.kpi_alerts, self.kpi_critical, self.kpi_iocs):
+                k.setMinimumHeight(96)
+                kpis.addWidget(k)
+            dl.addLayout(kpis)
+
+            charts = QHBoxLayout()
+            charts.setSpacing(10)
+            sev_card = Card("Alerts by severity")
+            self.sev_bars = BarList("No alerts", max_rows=4)
+            sev_card.body.addWidget(self.sev_bars)
+            charts.addWidget(sev_card, 1)
+            type_card = Card("Most frequent alerts")
+            self.type_bars = BarList("No alerts", max_rows=6)
+            type_card.body.addWidget(self.type_bars)
+            charts.addWidget(type_card, 1)
+            dl.addLayout(charts)
+
             tabs = QTabWidget()
-
-            # Anomalies tab
             self.anomalies_table = QTableWidget()
             self.anomalies_table.setColumnCount(6)
-            self.anomalies_table.setHorizontalHeaderLabels([
-                "Type", "Severity", "Source IP", "Dest IP", "Description", "Time"
-            ])
-            self.anomalies_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
-            self.anomalies_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.Stretch)  # Description stretches
-            tabs.addTab(self.anomalies_table, "⚠️ Anomalies")
-
-            # IOCs tab
+            self.anomalies_table.setHorizontalHeaderLabels(
+                ["Severity", "Alert", "Source", "Destination", "Description", "Time (UTC)"])
+            ah = self.anomalies_table.horizontalHeader()
+            ah.setSectionResizeMode(QHeaderView.ResizeToContents)
+            ah.setSectionResizeMode(4, QHeaderView.Stretch)
             self.iocs_table = QTableWidget()
             self.iocs_table.setColumnCount(5)
-            self.iocs_table.setHorizontalHeaderLabels([
-                "Type", "Value", "Severity", "Attack Type", "Count"
-            ])
-            self.iocs_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
-            self.iocs_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)  # Value stretches
-            tabs.addTab(self.iocs_table, "🔍 IOCs")
+            self.iocs_table.setHorizontalHeaderLabels(["Type", "Value", "Severity", "Attack type", "Count"])
+            ih = self.iocs_table.horizontalHeader()
+            ih.setSectionResizeMode(QHeaderView.ResizeToContents)
+            ih.setSectionResizeMode(1, QHeaderView.Stretch)
+            for t in (self.anomalies_table, self.iocs_table):
+                t.verticalHeader().setVisible(False)
+                t.setShowGrid(False)
+                t.setAlternatingRowColors(True)
+                t.setEditTriggers(QAbstractItemView.NoEditTriggers)
+                t.setSelectionBehavior(QAbstractItemView.SelectRows)
+            tabs.addTab(self.anomalies_table, "Alerts")
+            tabs.addTab(self.iocs_table, "IOCs")
+            self.detail_tabs = tabs
+            dl.addWidget(tabs, 1)
+            self.detail_stack.addWidget(detail)                            # 1
 
-            # Trends tab
-            self.trends_text = QTextEdit()
-            self.trends_text.setReadOnly(True)
-            tabs.addTab(self.trends_text, "📈 Trends")
+            compare = QWidget()
+            cl = QVBoxLayout(compare)
+            cl.setContentsMargins(0, 0, 0, 0)
+            ch = QHBoxLayout()
+            self.compare_title = QLabel("Compare scans")
+            self.compare_title.setObjectName("ValueMedium")
+            ch.addWidget(self.compare_title, 1)
+            self.compare_delete_btn = QPushButton("Delete selected")
+            self.compare_delete_btn.setObjectName("BtnDanger")
+            self.compare_delete_btn.clicked.connect(self._delete_selected)
+            ch.addWidget(self.compare_delete_btn)
+            cl.addLayout(ch)
+            self.compare_text = QTextEdit()
+            self.compare_text.setReadOnly(True)
+            cl.addWidget(self.compare_text, 1)
+            self.detail_stack.addWidget(compare)                           # 2
 
-            return tabs
+            many = QWidget()
+            ml = QVBoxLayout(many)
+            ml.addStretch()
+            self.many_label = QLabel("")
+            self.many_label.setAlignment(Qt.AlignCenter)
+            self.many_label.setObjectName("ValueMedium")
+            ml.addWidget(self.many_label)
+            mb = QHBoxLayout()
+            mb.addStretch()
+            many_delete = QPushButton("Delete selected scans")
+            many_delete.setObjectName("BtnDanger")
+            many_delete.clicked.connect(self._delete_selected)
+            mb.addWidget(many_delete)
+            mb.addStretch()
+            ml.addLayout(mb)
+            ml.addStretch()
+            self.detail_stack.addWidget(many)                              # 3
 
-        def _create_stats_group(self) -> QGroupBox:
-            """Create overall statistics group."""
-            group = QGroupBox("📊 Database Statistics (Last 30 Days)")
-            layout = QHBoxLayout(group)
+            splitter.addWidget(self.detail_stack)
+            splitter.setStretchFactor(0, 1)
+            splitter.setStretchFactor(1, 1)
+            splitter.setSizes([640, 620])
+            root.addWidget(splitter, 1)
 
+            # kept for compatibility with older callers
+            self.trends_text = self.compare_text
             self.db_stats_labels = {}
-            for stat_name in ['Sessions', 'Total Anomalies', 'Unique IOCs', 'Critical Alerts']:
-                frame = QFrame()
-                frame.setFrameShape(QFrame.StyledPanel)
-                frame_layout = QVBoxLayout(frame)
 
-                value_label = QLabel("0")
-                value_label.setStyleSheet("font-size: 28px; font-weight: bold; color: #bc8cff;")
-                value_label.setAlignment(Qt.AlignCenter)
-                frame_layout.addWidget(value_label)
+        def showEvent(self, event):
+            super().showEvent(event)
+            self._load_sessions()
 
-                name_label = QLabel(stat_name)
-                name_label.setAlignment(Qt.AlignCenter)
-                name_label.setStyleSheet("color: #c9d1d9; font-size: 14px;")
-                frame_layout.addWidget(name_label)
+        # ------------------------------------------------------------- data
+        def _selected_ids(self) -> List[str]:
+            rows = sorted({i.row() for i in self.sessions_table.selectedIndexes()})
+            ids = []
+            for r in rows:
+                item = self.sessions_table.item(r, 0)
+                if item is not None:
+                    ids.append(item.data(Qt.UserRole))
+            return [i for i in ids if i]
 
-                self.db_stats_labels[stat_name] = value_label
-                layout.addWidget(frame)
+        def _session_by_id(self, session_id: str) -> Optional[Dict]:
+            return next((s for s in self._sessions if s.get("id") == session_id), None)
 
-            return group
+        @staticmethod
+        def _local_time(value) -> str:
+            from datetime import datetime, timezone
+            if not value:
+                return "–"
+            if isinstance(value, str):
+                try:
+                    value = datetime.fromisoformat(value)
+                except ValueError:
+                    return value
+            if value.tzinfo is None:
+                value = value.replace(tzinfo=timezone.utc)   # SQLite CURRENT_TIMESTAMP is UTC
+            return value.astimezone().strftime("%Y-%m-%d %H:%M")
 
-        def _load_sessions(self):
-            """Load sessions from database."""
+        @staticmethod
+        def _human_size(n: int) -> str:
+            for unit in ("B", "KB", "MB", "GB"):
+                if n < 1024 or unit == "GB":
+                    return f"{n:.0f} {unit}" if unit == "B" else f"{n:.1f} {unit}"
+                n /= 1024
+            return f"{n:.1f} GB"
+
+        def _load_sessions(self, *_):
             if not self.database:
+                self.storage_label.setText("History database is not available.")
                 return
-
+            keep = set(self._selected_ids())
+            search = self.search_input.text().strip()
+            days = self.PERIODS[self.period_combo.currentIndex()][1]
             try:
-                sessions = self.database.get_recent_sessions(limit=50)
-
-                self.sessions_table.setRowCount(0)
-                for session in sessions:
-                    row = self.sessions_table.rowCount()
-                    self.sessions_table.insertRow(row)
-
-                    self.sessions_table.setItem(row, 0, QTableWidgetItem(session.get('id', '')))
-                    self.sessions_table.setItem(row, 1, QTableWidgetItem(session.get('pcap_file', '')))
-                    self.sessions_table.setItem(row, 2, QTableWidgetItem(session.get('status', '')))
-                    self.sessions_table.setItem(row, 3, QTableWidgetItem(str(session.get('total_packets', 0))))
-                    self.sessions_table.setItem(row, 4, QTableWidgetItem(str(session.get('total_anomalies', 0))))
-                    self.sessions_table.setItem(row, 5, QTableWidgetItem(str(session.get('started_at', ''))))
-
-                # Update stats
-                self._update_stats()
-
+                self._sessions = self.database.list_sessions(search=search, since_days=days)
+                info = self.database.storage_info()
             except Exception as e:
                 logger.warning(f"Failed to load sessions: {e}")
+                return
 
-        def _on_session_selected(self, row: int, col: int):
-            """Handle session selection."""
-            session_id = self.sessions_table.item(row, 0).text()
-            self._load_session_details(session_id)
-            self.session_selected.emit(session_id)
+            self.disabled_banner.setVisible(not self.history_enabled)
+            retention = (f"auto-delete after {self.retention_days} days"
+                         if self.retention_days else "kept until you delete them")
+            self.storage_label.setText(
+                f"{info['sessions']} scan{'s' if info['sessions'] != 1 else ''} · "
+                f"{self._human_size(info['size_bytes'])} · stored only on this computer · {retention}")
+            self.clear_btn.setEnabled(info['sessions'] > 0)
+            self.count_label.setText(f"{len(self._sessions)} shown")
+
+            table = self.sessions_table
+            table.blockSignals(True)
+            table.setRowCount(len(self._sessions))
+            from .gui_components import severity_item  # noqa: F401  (theme-aware colours)
+            for row, s in enumerate(self._sessions):
+                meta = s.get("metadata") or {}
+                name = QTableWidgetItem(s.get("pcap_file") or "–")
+                name.setData(Qt.UserRole, s.get("id"))
+                name.setToolTip(meta.get("capture_path") or s.get("pcap_file") or "")
+                table.setItem(row, 0, name)
+                table.setItem(row, 1, QTableWidgetItem(self._local_time(s.get("started_at"))))
+                for col, value in ((2, s.get("total_packets") or 0), (3, s.get("total_anomalies") or 0),
+                                   (4, (meta.get("severity") or {}).get("CRITICAL", 0))):
+                    item = QTableWidgetItem(f"{int(value):,}")
+                    item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+                    if col == 4 and value:
+                        item.setForeground(QColor("#f85149"))
+                    table.setItem(row, col, item)
+                if s.get("id") in keep:
+                    table.selectRow(row)
+            table.blockSignals(False)
+            self._on_selection_changed()
+
+        def _on_selection_changed(self):
+            ids = self._selected_ids()
+            if not self._sessions:
+                self.empty_label.setText(
+                    "No scans yet.\nOpen a PCAP file — each analysis is saved here automatically."
+                    if not self.search_input.text() and self.period_combo.currentIndex() == 0
+                    else "No scans match the current filter.")
+                self.detail_stack.setCurrentIndex(0)
+            elif not ids:
+                self.empty_label.setText("Select a scan to see its details.\n"
+                                         "Select two scans to compare them.")
+                self.detail_stack.setCurrentIndex(0)
+            elif len(ids) == 1:
+                self._load_session_details(ids[0])
+                self.detail_stack.setCurrentIndex(1)
+                self.session_selected.emit(ids[0])
+            elif len(ids) == 2:
+                self._show_comparison(ids)
+                self.detail_stack.setCurrentIndex(2)
+            else:
+                self.many_label.setText(f"{len(ids)} scans selected")
+                self.detail_stack.setCurrentIndex(3)
+
+        def _on_session_selected(self, row: int, col: int = 0):
+            """Select a row programmatically (kept for compatibility)."""
+            self.sessions_table.selectRow(row)
 
         def _load_session_details(self, session_id: str):
-            """Load session details."""
+            import os
+            from .gui_components import pretty_type, severity_item, short_time
             if not self.database:
                 return
-
             try:
-                # Load anomalies
-                anomalies = self.database.get_anomalies(session_id=session_id, limit=100)
-
-                self.anomalies_table.setRowCount(0)
-                for anomaly in anomalies:
-                    row = self.anomalies_table.rowCount()
-                    self.anomalies_table.insertRow(row)
-
-                    self.anomalies_table.setItem(row, 0, QTableWidgetItem(anomaly.get('anomaly_type', '')))
-
-                    severity_item = QTableWidgetItem(anomaly.get('severity', ''))
-                    severity = anomaly.get('severity', '')
-                    if severity == 'CRITICAL':
-                        severity_item.setForeground(Qt.red)
-                    elif severity == 'HIGH':
-                        severity_item.setForeground(Qt.darkYellow)
-                    self.anomalies_table.setItem(row, 1, severity_item)
-
-                    self.anomalies_table.setItem(row, 2, QTableWidgetItem(anomaly.get('src_ip', '')))
-                    self.anomalies_table.setItem(row, 3, QTableWidgetItem(anomaly.get('dst_ip', '')))
-                    self.anomalies_table.setItem(row, 4, QTableWidgetItem(anomaly.get('description', '')[:50]))
-                    self.anomalies_table.setItem(row, 5, QTableWidgetItem(str(anomaly.get('timestamp', ''))))
-
-                # Load IOCs
-                iocs = self.database.get_iocs(session_id=session_id, limit=100)
-
-                self.iocs_table.setRowCount(0)
-                for ioc in iocs:
-                    row = self.iocs_table.rowCount()
-                    self.iocs_table.insertRow(row)
-
-                    self.iocs_table.setItem(row, 0, QTableWidgetItem(ioc.get('ioc_type', '')))
-                    self.iocs_table.setItem(row, 1, QTableWidgetItem(ioc.get('value', '')))
-                    self.iocs_table.setItem(row, 2, QTableWidgetItem(ioc.get('severity', '')))
-                    self.iocs_table.setItem(row, 3, QTableWidgetItem(ioc.get('attack_type', '')))
-                    self.iocs_table.setItem(row, 4, QTableWidgetItem(str(ioc.get('occurrence_count', 0))))
-
+                s = self.database.session_overview(session_id)
+                anomalies = self.database.get_anomalies(session_id=session_id, limit=1000)
+                iocs = self.database.get_iocs(session_id=session_id, limit=1000)
             except Exception as e:
                 logger.warning(f"Failed to load session details: {e}")
+                return
+            if not s:
+                return
+            meta = s.get("metadata") or {}
+            path = meta.get("capture_path") or ""
+            self.detail_title.setText(s.get("pcap_file") or "–")
+            bits = [f"Scanned {self._local_time(s.get('started_at'))}"]
+            if meta.get("duration"):
+                bits.append(f"capture {meta['duration']}")
+            self.detail_sub.setText("  ·  ".join(bits))
+            self.detail_sub.setToolTip(f"SHA-256: {s['pcap_hash']}" if s.get("pcap_hash") else "")
+            self._current_path = path
+            exists = bool(path) and os.path.isfile(path)
+            self.reanalyze_btn.setEnabled(exists)
+            self.reanalyze_btn.setToolTip(path if exists else "The original capture file is not available any more")
+
+            sev = s.get("severity") or {}
+            self.kpi_packets.set_value(f"{s.get('total_packets') or 0:,}", meta.get("file_size", ""))
+            self.kpi_alerts.set_value(f"{s.get('total_anomalies') or 0:,}",
+                                      f"{len(meta.get('top_techniques') or {})} ATT&CK techniques")
+            self.kpi_critical.set_value(f"{sev.get('CRITICAL', 0):,}", f"{sev.get('HIGH', 0)} high")
+            self.kpi_iocs.set_value(f"{s.get('ioc_count', 0):,}", "indicators")
+            self.sev_bars.set_rows([("Critical", sev.get("CRITICAL", 0), "critical"),
+                                    ("High", sev.get("HIGH", 0), "high"),
+                                    ("Medium", sev.get("MEDIUM", 0), "medium"),
+                                    ("Low", sev.get("LOW", 0), "low")])
+            self.type_bars.set_rows((pretty_type(t), n, "accent") for t, n in s.get("top_types") or [])
+
+            order = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3}
+            anomalies.sort(key=lambda a: (order.get(a.get("severity"), 9), str(a.get("timestamp"))))
+            self.anomalies_table.setRowCount(len(anomalies))
+            for r, a in enumerate(anomalies):
+                self.anomalies_table.setItem(r, 0, severity_item(a.get("severity", "")))
+                self.anomalies_table.setItem(r, 1, QTableWidgetItem(pretty_type(a.get("anomaly_type", ""))))
+                self.anomalies_table.setItem(r, 2, QTableWidgetItem(a.get("src_ip") or ""))
+                self.anomalies_table.setItem(r, 3, QTableWidgetItem(a.get("dst_ip") or ""))
+                desc = a.get("description") or ""
+                d_item = QTableWidgetItem(desc[:160])
+                d_item.setToolTip(desc)
+                self.anomalies_table.setItem(r, 4, d_item)
+                self.anomalies_table.setItem(r, 5, QTableWidgetItem(short_time(a.get("timestamp"))))
+            self.iocs_table.setRowCount(len(iocs))
+            for r, ioc in enumerate(iocs):
+                self.iocs_table.setItem(r, 0, QTableWidgetItem(ioc.get("ioc_type", "")))
+                self.iocs_table.setItem(r, 1, QTableWidgetItem(ioc.get("value", "")))
+                self.iocs_table.setItem(r, 2, severity_item(ioc.get("severity") or ""))
+                self.iocs_table.setItem(r, 3, QTableWidgetItem(pretty_type(ioc.get("attack_type") or "")))
+                self.iocs_table.setItem(r, 4, QTableWidgetItem(str(ioc.get("occurrence_count", 1))))
+
+        def _show_comparison(self, ids: List[str]):
+            from .gui_components import pretty_type
+            sessions = [self._session_by_id(i) for i in ids]
+            sessions.sort(key=lambda s: str(s.get("started_at")) if s else "")
+            older, newer = sessions
+            try:
+                diff = self.database.compare_sessions(older["id"], newer["id"])
+            except Exception as e:
+                logger.warning(f"Compare failed: {e}")
+                return
+            esc = _html.escape
+            self.compare_title.setText("Compare scans")
+
+            def section(title, items, tone):
+                if not items:
+                    return (f"<p style='margin:10px 0 2px 0; color:#8b949e'><b>{esc(title)}</b>: none</p>")
+                rows = "".join(f"<li>{x}</li>" for x in items[:60])
+                more = f"<li>… and {len(items) - 60} more</li>" if len(items) > 60 else ""
+                return (f"<p style='margin:12px 0 2px 0; color:{tone}'><b>{esc(title)} ({len(items)})</b></p>"
+                        f"<ul style='margin-top:2px'>{rows}{more}</ul>")
+
+            html = (
+                f"<p><b>{esc(older.get('pcap_file') or '')}</b> "
+                f"<span style='color:#8b949e'>({esc(self._local_time(older.get('started_at')))})</span>"
+                f" &nbsp;→&nbsp; <b>{esc(newer.get('pcap_file') or '')}</b> "
+                f"<span style='color:#8b949e'>({esc(self._local_time(newer.get('started_at')))})</span></p>"
+                f"<p style='color:#8b949e'>Alerts: {older.get('total_anomalies') or 0} → "
+                f"{newer.get('total_anomalies') or 0} &nbsp;·&nbsp; Packets: {older.get('total_packets') or 0:,} → "
+                f"{newer.get('total_packets') or 0:,}</p>"
+                + section("New alert types", [esc(pretty_type(t)) for t in diff["new_types"]], "#f85149")
+                + section("Alert types no longer seen", [esc(pretty_type(t)) for t in diff["resolved_types"]],
+                          "#3fb950")
+                + section("Alert types with a different count",
+                          [f"{esc(pretty_type(t))}: {a} → {b}" for t, a, b in diff["changed_types"]], "#d29922")
+                + section("New indicators (IOCs)", [f"{esc(t)} · {esc(v)}" for t, v in diff["new_iocs"]],
+                          "#f85149")
+                + section("Indicators no longer seen", [f"{esc(t)} · {esc(v)}" for t, v in diff["gone_iocs"]],
+                          "#3fb950")
+            )
+            self.compare_text.setHtml(html)
 
         def _update_stats(self):
-            """Update database statistics."""
+            """Kept for compatibility: statistics now live in the header line."""
+            self._load_sessions()
+
+        # ---------------------------------------------------------- actions
+        def _session_menu(self, pos):
+            if not self._selected_ids():
+                row = self.sessions_table.rowAt(pos.y())
+                if row < 0:
+                    return
+                self.sessions_table.selectRow(row)
+            ids = self._selected_ids()
+            menu = QMenu(self)
+            if len(ids) == 1:
+                menu.addAction("Analyze again", self._reanalyze).setEnabled(self.reanalyze_btn.isEnabled())
+                menu.addAction("Export…", self._export_session)
+                menu.addSeparator()
+            menu.addAction(f"Delete {len(ids)} scan{'s' if len(ids) != 1 else ''}", self._delete_selected)
+            menu.exec_(self.sessions_table.viewport().mapToGlobal(pos))
+
+        def _confirm(self, title: str, text: str) -> bool:
+            box = QMessageBox(QMessageBox.Warning, title, text, QMessageBox.Cancel, self)
+            delete = box.addButton("Delete", QMessageBox.DestructiveRole)
+            delete.setObjectName("BtnDanger")
+            box.setDefaultButton(QMessageBox.Cancel)
+            box.exec_()
+            return box.clickedButton() is delete
+
+        def _delete_selected(self):
+            ids = self._selected_ids()
+            if not ids or not self.database:
+                return
+            n = len(ids)
+            if not self._confirm("Delete scans",
+                                 f"Permanently delete {n} scan{'s' if n != 1 else ''} with all their "
+                                 "alerts and indicators?\nThis cannot be undone."):
+                return
+            self.database.delete_sessions(ids)
+            self.sessions_table.clearSelection()
+            self._load_sessions()
+
+        def _delete_all(self):
             if not self.database:
                 return
+            if not self._confirm("Delete all history",
+                                 "Permanently delete every saved scan from this computer?\n"
+                                 "Your IOC watchlist is kept. This cannot be undone."):
+                return
+            self.database.delete_all_sessions()
+            self.sessions_table.clearSelection()
+            self._load_sessions()
 
-            try:
-                stats = self.database.get_statistics(days=30)
+        def _open_settings(self):
+            info = self.database.storage_info() if self.database else {"path": "-"}
+            dlg = HistorySettingsDialog(self.history_enabled, self.retention_days, info["path"], self)
+            if dlg.exec_() != QDialog.Accepted:
+                return
+            enabled, days = dlg.values()
+            self.settings.setValue("history/enabled", "true" if enabled else "false")
+            self.settings.setValue("history/retention_days", int(days))
+            self._apply_retention()
+            self._load_sessions()
 
-                session_stats = stats.get('sessions', {})
-                self.db_stats_labels['Sessions'].setText(str(session_stats.get('total', 0)))
-                self.db_stats_labels['Total Anomalies'].setText(str(session_stats.get('total_anomalies', 0)))
+        def _apply_retention(self):
+            if self.retention_days and self.database:
+                try:
+                    removed = self.database.purge_older_than(self.retention_days)
+                    if removed:
+                        logger.info(f"History clean-up removed {removed} old scan(s)")
+                except Exception as e:
+                    logger.warning(f"History clean-up failed: {e}")
 
-                ioc_stats = stats.get('ioc_types', {})
-                total_iocs = sum(t.get('unique', 0) for t in ioc_stats.values())
-                self.db_stats_labels['Unique IOCs'].setText(str(total_iocs))
-
-                severity_stats = stats.get('severity_distribution', {})
-                self.db_stats_labels['Critical Alerts'].setText(str(severity_stats.get('CRITICAL', 0)))
-
-                # Update trends text
-                self._update_trends_display(stats)
-
-            except Exception as e:
-                logger.warning(f"Failed to update stats: {e}")
-
-        def _update_trends_display(self, stats: Dict):
-            """Update trends display."""
-            html = "<h3>📈 Analysis Trends (Last 30 Days)</h3>"
-
-            # Anomaly types
-            anomaly_types = stats.get('anomaly_types', {})
-            if anomaly_types:
-                html += "<h4>Top Anomaly Types:</h4><ul>"
-                for atype, count in sorted(anomaly_types.items(), key=lambda x: -x[1])[:10]:
-                    html += f"<li>{_html.escape(str(atype))}: {count}</li>"
-                html += "</ul>"
-
-            # Top IPs
-            top_ips = stats.get('top_source_ips', [])
-            if top_ips:
-                html += "<h4>Top Attacking IPs:</h4><ul>"
-                for ip_data in top_ips[:5]:
-                    html += f"<li>{_html.escape(str(ip_data['ip']))}: {ip_data['count']} events</li>"
-                html += "</ul>"
-
-            self.trends_text.setHtml(html)
+        def _reanalyze(self):
+            path = getattr(self, "_current_path", "")
+            if path:
+                self.reanalyze_requested.emit(path)
 
         def _export_session(self):
-            """Export selected session."""
-            selected = self.sessions_table.selectedItems()
-            if not selected:
-                QMessageBox.warning(self, "Warning", "Please select a session to export")
+            ids = self._selected_ids()
+            if len(ids) != 1 or not self.database:
+                QMessageBox.information(self, "Export", "Select one scan to export.")
                 return
-
-            session_id = self.sessions_table.item(selected[0].row(), 0).text()
-
+            session = self._session_by_id(ids[0]) or {}
+            base = (session.get("pcap_file") or "scan").rsplit(".", 1)[0]
             filename, _ = QFileDialog.getSaveFileName(
-                self, "Export Session", f"session_{session_id}.json", "JSON files (*.json)"
-            )
-
-            if filename and self.database:
-                if self.database.export_session(session_id, filename):
-                    QMessageBox.information(self, "Success", f"Session exported to {filename}")
-                else:
-                    QMessageBox.critical(self, "Error", "Failed to export session")
+                self, "Export scan", f"{base}_{ids[0][:8]}.json", "JSON files (*.json)")
+            if not filename:
+                return
+            if self.database.export_session(ids[0], filename):
+                QMessageBox.information(self, "Export", f"Scan exported to\n{filename}")
+            else:
+                QMessageBox.critical(self, "Export", "The scan could not be exported.")
 
         def _import_session(self):
-            """Import session from file."""
-            filename, _ = QFileDialog.getOpenFileName(
-                self, "Import Session", "", "JSON files (*.json)"
-            )
-
+            filename, _ = QFileDialog.getOpenFileName(self, "Import scan", "", "JSON files (*.json)")
             if filename and self.database:
-                session_id = self.database.import_session(filename)
-                if session_id:
-                    QMessageBox.information(self, "Success", f"Session imported: {session_id}")
+                if self.database.import_session(filename):
                     self._load_sessions()
                 else:
-                    QMessageBox.critical(self, "Error", "Failed to import session")
+                    QMessageBox.critical(self, "Import", "The file is not a valid exported scan.")
 
         def _search_iocs(self):
-            """Search IOCs in database."""
-            query = self.search_input.text().strip()
-            if not query or not self.database:
-                return
+            """Kept for compatibility: the search box now filters scans by file name."""
+            self._load_sessions()
 
-            try:
-                results = self.database.search_iocs(query, limit=50)
+        def update_theme(self):
+            for k in (self.kpi_packets, self.kpi_alerts, self.kpi_critical, self.kpi_iocs):
+                k.update_theme()
+            for b in (self.sev_bars, self.type_bars):
+                b.update()
+            if self.detail_stack.currentIndex() == 2:
+                self._show_comparison(self._selected_ids())
 
-                if results:
-                    # Show in IOCs table
-                    self.iocs_table.setRowCount(0)
-                    for ioc in results:
-                        row = self.iocs_table.rowCount()
-                        self.iocs_table.insertRow(row)
-
-                        self.iocs_table.setItem(row, 0, QTableWidgetItem(ioc.get('ioc_type', '')))
-                        self.iocs_table.setItem(row, 1, QTableWidgetItem(ioc.get('value', '')))
-                        self.iocs_table.setItem(row, 2, QTableWidgetItem(ioc.get('severity', '')))
-                        self.iocs_table.setItem(row, 3, QTableWidgetItem(ioc.get('attack_type', '')))
-                        self.iocs_table.setItem(row, 4, QTableWidgetItem(str(ioc.get('occurrence_count', 0))))
-
-                    QMessageBox.information(self, "Search Results", f"Found {len(results)} matching IOCs")
-                else:
-                    QMessageBox.information(self, "Search Results", "No matching IOCs found")
-
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"Search failed: {e}")
-
+        # -------------------------------------------------------- persistence
         def store_analysis_results(self, analyzer, pcap_file: str) -> Optional[str]:
             """
-            Store analysis results to database.
-
-            NOTE: This method may be called from a background thread.
-            Do NOT update any GUI elements here. Use signals/slots for UI updates.
-
-            Args:
-                analyzer: OTAnalyzer instance with results
-                pcap_file: Path to analyzed PCAP file
-
-            Returns:
-                Session ID if successful
+            Save one analysis. May run in a background thread: no widget access
+            here — the list is refreshed through the ``history_changed`` signal.
             """
-            if not self.database:
+            import os
+            if not self.history_enabled or not self.database:
                 return None
-
             try:
-                # Create session
-                session_id = self.database.create_session(pcap_file, metadata={
-                    'version': getattr(analyzer, 'VERSION', 'unknown'),
-                    'packets_parsed': analyzer.packets_parsed,
-                })
-
-                # Store anomalies
-                if hasattr(analyzer, 'anomalies'):
-                    self.database.store_anomalies(session_id, analyzer.anomalies)
-
-                # Store IOCs if available
-                if hasattr(analyzer, 'ioc_results') and analyzer.ioc_results:
-                    self.database.store_iocs(session_id, analyzer.ioc_results)
-
-                # Update session status
+                summary = analyzer.get_summary() if hasattr(analyzer, "get_summary") else {}
+                anomalies = list(getattr(analyzer, "anomalies", []) or [])
+                severity = {}
+                for a in anomalies:
+                    sev = str(getattr(a, "severity", "")).upper()
+                    severity[sev] = severity.get(sev, 0) + 1
+                capture_path = os.path.abspath(pcap_file) if pcap_file and os.path.exists(pcap_file) else ""
+                metadata = {
+                    "app_version": summary.get("VERSION", ""),
+                    "capture_path": capture_path,
+                    "file_size": summary.get("CAPTURE_SIZE", ""),
+                    "duration": summary.get("DURATION_STR", ""),
+                    "ot_events": summary.get("OT_EVENTS_TOTAL", 0),
+                    "assets": summary.get("ASSETS_DISCOVERED", 0),
+                    "protocols": summary.get("OT_PROTOCOLS", {}),
+                    "top_techniques": summary.get("TOP_MITRE", {}),
+                    "severity": severity,
+                }
+                session_id = self.database.create_session(
+                    os.path.basename(pcap_file) or summary.get("CAPTURE_FILE", "capture"),
+                    metadata=metadata,
+                    pcap_hash=getattr(analyzer, "capture_sha256", None))
+                if anomalies:
+                    self.database.store_anomalies(session_id, anomalies)
+                try:
+                    from .ioc_collector import IOCCollector
+                    iocs = IOCCollector().extract_iocs(analyzer)
+                    if iocs:
+                        self.database.store_iocs(session_id, iocs)
+                except Exception as e:
+                    logger.warning(f"IOCs not saved to history: {e}")
                 self.database.update_session(
-                    session_id,
-                    status='completed',
-                    total_packets=analyzer.packets_parsed,
-                    total_anomalies=len(getattr(analyzer, 'anomalies', []))
-                )
-
-                logger.info(f"Stored analysis results to database: {session_id}")
-
-                # NOTE: Do NOT call _load_sessions() here!
-                # It updates GUI from background thread which causes crash.
-                # The UI will be refreshed next time user navigates to History tab.
-
+                    session_id, status="completed",
+                    total_packets=getattr(analyzer, "packets_parsed", 0),
+                    total_anomalies=len(anomalies))
+                self.database.purge_older_than(self.retention_days)
+                logger.info(f"Saved analysis to history: {session_id}")
+                self.history_changed.emit()
                 return session_id
-
             except Exception as e:
                 logger.error(f"Failed to store analysis results: {e}")
                 return None
@@ -854,4 +1134,7 @@ else:
         pass
 
     class DatabaseHistoryPanel:
+        pass
+
+    class HistorySettingsDialog:
         pass

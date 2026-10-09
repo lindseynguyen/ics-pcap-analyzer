@@ -115,6 +115,8 @@ class AnalysisDatabase:
                 detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES
             )
             self._local.connection.row_factory = sqlite3.Row
+            # Deleted history must really disappear from the file (privacy)
+            self._local.connection.execute("PRAGMA secure_delete = ON")
 
         try:
             yield self._local.connection
@@ -254,7 +256,8 @@ class AnalysisDatabase:
 
     # ==================== Session Management ====================
 
-    def create_session(self, pcap_file: str, metadata: Dict = None) -> str:
+    def create_session(self, pcap_file: str, metadata: Dict = None,
+                       pcap_hash: Optional[str] = None) -> str:
         """
         Create new analysis session.
 
@@ -269,12 +272,14 @@ class AnalysisDatabase:
             f"{pcap_file}:{datetime.now().isoformat()}".encode()
         ).hexdigest()[:16]
 
-        # Calculate PCAP file hash if file exists
-        pcap_hash = None
-        if os.path.exists(pcap_file):
+        # Calculate PCAP file hash if file exists (streamed: captures can be GBs)
+        if not pcap_hash and os.path.isfile(pcap_file):
             try:
+                digest = hashlib.sha256()
                 with open(pcap_file, 'rb') as f:
-                    pcap_hash = hashlib.sha256(f.read()).hexdigest()
+                    for chunk in iter(lambda: f.read(1 << 20), b""):
+                        digest.update(chunk)
+                pcap_hash = digest.hexdigest()
             except IOError:
                 pass
 
@@ -640,7 +645,7 @@ class AnalysisDatabase:
                     if hasattr(ioc, 'value'):
                         self.store_ioc(
                             session_id,
-                            db_type,
+                            getattr(ioc, 'ioc_type', None) or db_type,
                             str(ioc.value),
                             severity=getattr(ioc, 'severity', None),
                             context={'source': ioc_category}
@@ -1136,6 +1141,134 @@ class AnalysisDatabase:
         except Exception as e:
             logger.error(f"Import failed: {e}")
             return None
+
+    # ==================== History management ====================
+
+    @staticmethod
+    def _session_row(row) -> Dict:
+        session = dict(row)
+        try:
+            session['metadata'] = json.loads(session.get('metadata') or '{}') or {}
+        except (TypeError, ValueError):
+            session['metadata'] = {}
+        return session
+
+    def list_sessions(self, search: str = "", since_days: Optional[int] = None,
+                      limit: int = 500) -> List[Dict]:
+        """Sessions newest first, optionally filtered by file name and age."""
+        conditions, params = [], []
+        if search:
+            conditions.append("pcap_file LIKE ? ESCAPE '\\'")
+            escaped = search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            params.append(f"%{escaped}%")
+        if since_days:
+            conditions.append("started_at >= ?")
+            params.append((datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=since_days)).strftime("%Y-%m-%d %H:%M:%S"))
+        where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+        params.append(limit)
+        with self._get_connection() as conn:
+            rows = conn.execute(
+                f"SELECT * FROM sessions {where} ORDER BY started_at DESC LIMIT ?", params
+            ).fetchall()
+        return [self._session_row(r) for r in rows]
+
+    def session_overview(self, session_id: str) -> Optional[Dict]:
+        """Session plus severity / type / protocol breakdowns of its stored alerts."""
+        with self._get_connection() as conn:
+            row = conn.execute("SELECT * FROM sessions WHERE id = ?", (session_id,)).fetchone()
+            if not row:
+                return None
+            session = self._session_row(row)
+            session['severity'] = {
+                r['severity']: r['n'] for r in conn.execute(
+                    "SELECT severity, COUNT(*) AS n FROM anomalies WHERE session_id = ? GROUP BY severity",
+                    (session_id,))}
+            session['top_types'] = [
+                (r['anomaly_type'], r['n']) for r in conn.execute(
+                    "SELECT anomaly_type, COUNT(*) AS n FROM anomalies WHERE session_id = ? "
+                    "GROUP BY anomaly_type ORDER BY n DESC LIMIT 8", (session_id,))]
+            session['ioc_count'] = conn.execute(
+                "SELECT COUNT(*) FROM iocs WHERE session_id = ?", (session_id,)).fetchone()[0]
+        return session
+
+    def _delete_where(self, conn, where: str, params) -> int:
+        ids = [r[0] for r in conn.execute(f"SELECT id FROM sessions {where}", params)]
+        for start in range(0, len(ids), 500):
+            chunk = ids[start:start + 500]
+            marks = ",".join("?" * len(chunk))
+            for table in ("attack_timeline", "anomalies", "iocs"):
+                conn.execute(f"DELETE FROM {table} WHERE session_id IN ({marks})", chunk)
+            conn.execute(f"DELETE FROM sessions WHERE id IN ({marks})", chunk)
+        return len(ids)
+
+    def _after_delete(self, conn, removed: int) -> int:
+        conn.execute("DELETE FROM statistics_cache")
+        conn.commit()
+        if removed:
+            conn.execute("VACUUM")          # shrink the file, drop freed pages
+        return removed
+
+    def delete_sessions(self, session_ids: List[str]) -> int:
+        """Delete sessions with all their alerts, IOCs and timeline rows."""
+        ids = [str(i) for i in session_ids if i]
+        if not ids:
+            return 0
+        with self._get_connection() as conn:
+            marks = ",".join("?" * len(ids))
+            removed = self._delete_where(conn, f"WHERE id IN ({marks})", ids)
+            return self._after_delete(conn, removed)
+
+    def delete_session(self, session_id: str) -> bool:
+        return self.delete_sessions([session_id]) == 1
+
+    def delete_all_sessions(self) -> int:
+        """Erase the whole scan history (the user's IOC watchlist is kept)."""
+        with self._get_connection() as conn:
+            removed = self._delete_where(conn, "", [])
+            # orphans from older versions / interrupted imports
+            for table in ("attack_timeline", "anomalies", "iocs"):
+                conn.execute(f"DELETE FROM {table}")
+            return self._after_delete(conn, removed)
+
+    def purge_older_than(self, days: int) -> int:
+        """Delete sessions started more than ``days`` days ago (0 = keep everything)."""
+        if not days or days <= 0:
+            return 0
+        cutoff = (datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
+        with self._get_connection() as conn:
+            removed = self._delete_where(conn, "WHERE started_at < ?", [cutoff])
+            return self._after_delete(conn, removed)
+
+    def storage_info(self) -> Dict[str, Any]:
+        with self._get_connection() as conn:
+            count = conn.execute("SELECT COUNT(*) FROM sessions").fetchone()[0]
+        try:
+            size = os.path.getsize(self.db_path)
+        except OSError:
+            size = 0
+        return {"path": self.db_path, "size_bytes": size, "sessions": count}
+
+    def compare_sessions(self, older_id: str, newer_id: str) -> Dict[str, Any]:
+        """What changed between two scans (alert types and IOC values)."""
+        with self._get_connection() as conn:
+            def types(sid):
+                return {r[0]: r[1] for r in conn.execute(
+                    "SELECT anomaly_type, COUNT(*) FROM anomalies WHERE session_id = ? GROUP BY anomaly_type",
+                    (sid,))}
+
+            def iocs(sid):
+                return {(r[0], r[1]) for r in conn.execute(
+                    "SELECT ioc_type, value FROM iocs WHERE session_id = ?", (sid,))}
+            old_t, new_t = types(older_id), types(newer_id)
+            old_i, new_i = iocs(older_id), iocs(newer_id)
+        return {
+            "new_types": sorted(set(new_t) - set(old_t)),
+            "resolved_types": sorted(set(old_t) - set(new_t)),
+            "changed_types": sorted((t, old_t[t], new_t[t]) for t in set(old_t) & set(new_t)
+                                    if old_t[t] != new_t[t]),
+            "new_iocs": sorted(new_i - old_i),
+            "gone_iocs": sorted(old_i - new_i),
+        }
 
     def vacuum(self):
         """Optimize database size."""

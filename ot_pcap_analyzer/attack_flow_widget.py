@@ -29,6 +29,8 @@ from PyQt5.QtGui import (
     QLinearGradient, QRadialGradient, QPixmap, QCursor, QPolygonF
 )
 
+from .gui_style import themed
+
 from datetime import datetime
 from typing import List, Dict, Optional, Set, Tuple
 from collections import defaultdict
@@ -103,9 +105,9 @@ class NetworkNode(QGraphicsEllipseItem):
 
         # Colors based on type
         colors = NODE_COLORS.get(node_type, NODE_COLORS["normal"])
-        self.base_fill = QColor(colors["fill"])
-        self.stroke_color = QColor(colors["stroke"])
-        self.text_color = QColor(colors["text"])
+        self.base_fill = themed(colors["fill"], "bg")
+        self.stroke_color = themed(colors["stroke"], "fg")
+        self.text_color = themed(colors["text"], "fg")
 
         # Styling
         self.setPen(QPen(self.stroke_color, 3))
@@ -151,7 +153,7 @@ class NetworkNode(QGraphicsEllipseItem):
         }
         type_text = type_labels.get(self.node_type, "Node")
         self.type_label = QGraphicsTextItem(type_text, self)
-        self.type_label.setDefaultTextColor(QColor("#8b949e"))
+        self.type_label.setDefaultTextColor(themed("#8b949e", "fg"))
         font2 = QFont("Inter", 8)
         self.type_label.setFont(font2)
 
@@ -203,7 +205,7 @@ class AttackArrow(QGraphicsPathItem):
         self.arrow_label = label
 
         # Color based on severity
-        color = QColor(SEVERITY_COLORS.get(severity, "#ffd43b"))
+        color = themed(SEVERITY_COLORS.get(severity, "#ffd43b"), "fg")
         self.setPen(QPen(color, 3, Qt.DashLine))
 
         # Build curved path
@@ -294,15 +296,15 @@ class ZoneRect(QGraphicsRectItem):
         fill_color, stroke_color = zone_colors.get(zone_type, ("#1c2128", "#3d444d"))
 
         # Styling
-        self.setPen(QPen(QColor(stroke_color), 2, Qt.DashLine))
-        self.setBrush(QBrush(QColor(fill_color)))
-        self.setOpacity(0.7)
+        self.setPen(QPen(themed(stroke_color, "fg"), 2, Qt.DashLine))
+        self.setBrush(QBrush(themed(fill_color, "bg")))
+        self.setOpacity(0.85)
 
         # Z-value to put zones behind nodes
         self.setZValue(-10)
 
         # Add label
-        self._add_label(label, QColor(stroke_color))
+        self._add_label(label, themed(stroke_color, "fg"))
 
     def _add_label(self, label: str, color: QColor):
         """Add zone label"""
@@ -327,15 +329,16 @@ class NetworkGraphicsScene(QGraphicsScene):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setBackgroundBrush(QBrush(QColor("#0d1117")))
+        self.setBackgroundBrush(QBrush(themed("#0d1117", "bg")))
 
         self.nodes = {}  # ip -> NetworkNode
         self.arrows = []  # List of AttackArrow
         self.zones = []  # List of ZoneRect
 
     def clear_all(self):
-        """Clear all items"""
+        """Clear all items (and pick up the current theme's background)"""
         self.clear()
+        self.setBackgroundBrush(QBrush(themed("#0d1117", "bg")))
         self.nodes = {}
         self.arrows = []
         self.zones = []
@@ -1012,9 +1015,11 @@ class AttackFlowWidget(QWidget):
                 background-color: #30363d;
                 color: #f0f6fc;
                 border: 1px solid #484f58;
-                border-radius: 4px;
+                border-radius: 6px;
                 font-size: 14px;
                 font-weight: 700;
+                padding: 0;
+                min-height: 0;
             }
             QPushButton:hover {
                 background-color: #484f58;
@@ -1063,7 +1068,7 @@ class AttackFlowWidget(QWidget):
             # Render scene to pixmap
             rect = self.scene.sceneRect()
             pixmap = QPixmap(int(rect.width()), int(rect.height()))
-            pixmap.fill(QColor("#0d1117"))
+            pixmap.fill(themed("#0d1117", "bg"))
 
             painter = QPainter(pixmap)
             painter.setRenderHint(QPainter.Antialiasing)

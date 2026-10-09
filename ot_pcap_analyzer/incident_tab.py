@@ -591,8 +591,8 @@ class StatCard(QFrame):
         self._history: List[float] = []  # Track values for sparkline
 
         # Size constraints - slightly larger for sparkline
-        self.setMinimumSize(QSize(185, 115))
-        self.setMaximumSize(QSize(250, 115))
+        self.setMinimumSize(QSize(200, 110))
+        self.setMaximumSize(QSize(340, 110))
         self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
 
         # Dark theme color mapping
@@ -631,12 +631,12 @@ class StatCard(QFrame):
 
         # Main layout - horizontal
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(16, 16, 16, 16)
-        layout.setSpacing(16)
+        layout.setContentsMargins(14, 14, 14, 14)
+        layout.setSpacing(12)
 
         # Icon container (left side)
         icon_frame = QFrame()
-        icon_frame.setFixedSize(48, 48)
+        icon_frame.setFixedSize(40, 40)
         icon_frame.setStyleSheet(f"""
             QFrame {{
                 background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
@@ -662,9 +662,8 @@ class StatCard(QFrame):
         title_label = QLabel(title)
         title_label.setStyleSheet(f"""
             color: {DARK_THEME['text_secondary']};
-            font-size: 13px;
+            font-size: 11px;
             font-weight: 600;
-            text-transform: uppercase;
             letter-spacing: 0.5px;
             background: transparent;
         """)
@@ -675,7 +674,7 @@ class StatCard(QFrame):
         self.value_label = QLabel(value)
         self.value_label.setStyleSheet(f"""
             color: {DARK_THEME['text_primary']};
-            font-size: 36px;
+            font-size: 28px;
             font-weight: 800;
             background: transparent;
         """)

@@ -5,10 +5,10 @@ OT PCAP Analyzer - GUI building blocks
 try:
     from PyQt5.QtWidgets import (
         QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
-        QProgressBar, QTableWidget, QFrame, QListWidget, QListWidgetItem,
+        QProgressBar, QTableWidget, QFrame,
         QScrollArea, QLineEdit
     )
-    from PyQt5.QtCore import Qt, QThread, pyqtSignal
+    from PyQt5.QtCore import Qt, QThread, QSize, pyqtSignal
     from PyQt5.QtGui import QColor
     HAS_PYQT5 = True
 except ImportError:
@@ -17,6 +17,7 @@ except ImportError:
 
 if HAS_PYQT5:
     from .version import VERSION
+    from .gui_theme import SOCIcons
 
     # =========================================================================
     # COMPACT METRIC WIDGET - Enhanced Risk-first design with icons
@@ -251,705 +252,377 @@ if HAS_PYQT5:
 
 
     # =========================================================================
-    # SIDEBAR NAVIGATION - Enhanced with modern icons
+    # SIDEBAR NAVIGATION
     # =========================================================================
 
     class SidebarNavigation(QWidget):
-        """
-        Vertical sidebar navigation for SOC-style layout with GROUPED WORKFLOW.
-
-        Navigation is organized into workflow sections:
-        - TRIAGE: Quick overview and alerts
-        - ANALYZE: Deep dive into data
-        - THREAT: Threat modeling and intelligence
-        - REPORT: Incidents and history
-        """
+        """Left navigation: app header, grouped pages, theme switch and zoom."""
         navigation_changed = pyqtSignal(int)
-        theme_changed = pyqtSignal()  # Signal to notify MainWindow to refresh theme
+        theme_changed = pyqtSignal()
 
-        # Grouped navigation with workflow sections
-        # Format: (section_name, section_icon, [(key, icon, label, tooltip), ...])
+        # (section, [(key, label, tooltip), ...]) in workflow order
         NAV_SECTIONS = [
-            ("TRIAGE", "▶", [
-                ("dashboard", "◉", "Dashboard", "Security Overview"),
-                ("anomalies", "△", "Alerts", "Alerts & Anomalies"),
+            ("TRIAGE", [
+                ("dashboard", "Dashboard", "Security overview"),
+                ("anomalies", "Alerts", "Alerts and anomalies"),
             ]),
-            ("ANALYZE", "▶", [
-                ("assets", "◫", "Assets", "Network Assets"),
-                ("ot_events", "⚙", "OT Events", "OT/ICS Protocol Events"),
-                ("attack_flow", "◈", "Attack Flow", "Attack Chain"),
+            ("ANALYZE", [
+                ("assets", "Assets", "Network assets"),
+                ("ot_events", "OT Events", "OT/ICS protocol events"),
+                ("attack_flow", "Attack Flow", "Attack chain graph"),
             ]),
-            ("THREAT", "▶", [
-                ("threat_model", "◎", "MITRE ATT&CK", "MITRE Matrix - Threat Mapping"),
-                ("ioc", "◐", "IOC Analysis", "Indicators of Compromise"),
-                ("threat_intel", "◆", "Threat Intel", "Threat Intelligence"),
+            ("THREAT", [
+                ("threat_model", "MITRE ATT&&CK", "MITRE ATT&CK matrix"),
+                ("ioc", "IOCs", "Indicators of compromise"),
+                ("threat_intel", "Threat Intel", "Threat intelligence lookups"),
             ]),
-            ("REPORT", "▶", [
-                ("incidents", "⚡", "Incidents", "Incident Reports & Stories"),
-                ("history", "◷", "History", "Analysis History"),
+            ("REPORT", [
+                ("incidents", "Incidents", "Incident stories"),
+                ("history", "Scan History", "Previous analyses stored on this computer"),
             ]),
         ]
 
-        # Flat list for backward compatibility (maps view index to content stack index)
-        NAV_ITEMS = [
-            ("dashboard", "◉", "Dashboard", "System overview"),
-            ("assets", "◫", "Assets", "Asset management"),
-            ("attack_flow", "◈", "Attack Flow", "Attack flow"),
-            ("threat_model", "◎", "Threat Model", "Threat model"),
-            ("anomalies", "△", "Anomalies", "Detected anomalies"),
-            ("ot_events", "⚙", "OT Events", "OT/ICS events"),
-            ("ioc", "◐", "IOC Analysis", "Indicator analysis"),
-            ("incidents", "⚡", "Incidents", "Security incidents"),
-            ("threat_intel", "◆", "Threat Intel", "Threat Intelligence"),
-            ("history", "◷", "History", "Analysis history"),
-        ]
-
-        # Mapping from nav key to content stack index (original order)
+        # nav key -> content stack index (order the pages are added in MainWindow)
         KEY_TO_INDEX = {
-            "dashboard": 0,
-            "assets": 1,
-            "attack_flow": 2,
-            "threat_model": 3,
-            "anomalies": 4,
-            "ot_events": 5,
-            "ioc": 6,
-            "incidents": 7,
-            "threat_intel": 8,
-            "history": 9,
+            "dashboard": 0, "assets": 1, "attack_flow": 2, "threat_model": 3,
+            "anomalies": 4, "ot_events": 5, "ioc": 6, "incidents": 7,
+            "threat_intel": 8, "history": 9,
         }
 
         def __init__(self, theme_manager=None, parent=None):
             super().__init__(parent)
             self.theme_manager = theme_manager
             self.setObjectName("Sidebar")
-            self.setFixedWidth(240)  # Wider for grouped layout
+            self.setAttribute(Qt.WA_StyledBackground, True)
+            self.setFixedWidth(232)
 
             layout = QVBoxLayout(self)
             layout.setContentsMargins(0, 0, 0, 0)
             layout.setSpacing(0)
 
-            # Logo / App title with tagline - store references for theme updates
+            # header: logo mark + name
             header = QWidget()
-            header_layout = QVBoxLayout(header)
-            header_layout.setContentsMargins(16, 16, 16, 12)
-            header_layout.setSpacing(4)
-
-            self.logo_label = QLabel("OT PCAP Analyzer")
-            header_layout.addWidget(self.logo_label)
-
-            self.tagline_label = QLabel("Advanced Threat Detection")
-            header_layout.addWidget(self.tagline_label)
-
-            self.version_label = QLabel(f"Version {VERSION}")
-            header_layout.addWidget(self.version_label)
-
+            hl = QHBoxLayout(header)
+            hl.setContentsMargins(16, 18, 16, 14)
+            hl.setSpacing(10)
+            logo = QLabel("OT")
+            logo.setObjectName("AppLogo")
+            logo.setFixedSize(34, 34)
+            logo.setAlignment(Qt.AlignCenter)
+            hl.addWidget(logo)
+            titles = QVBoxLayout()
+            titles.setSpacing(0)
+            self.logo_label = QLabel("ICS PCAP Analyzer")
+            self.logo_label.setObjectName("AppTitle")
+            titles.addWidget(self.logo_label)
+            self.version_label = QLabel(f"v{VERSION} · offline")
+            self.version_label.setObjectName("AppSubtitle")
+            titles.addWidget(self.version_label)
+            hl.addLayout(titles, 1)
             layout.addWidget(header)
 
-            # Store section headers for theme updates
-            self.section_headers = []
-
-            # Separator
-            sep = QFrame()
-            sep.setFrameShape(QFrame.HLine)
-            sep.setStyleSheet("background-color: #3d444d;")
-            sep.setFixedHeight(1)
-            layout.addWidget(sep)
-
-            # Custom icons mapping with colors for active state
-            self.icon_colors = {
-                "dashboard": "#74c0fc",
-                "assets": "#bc8cff",
-                "attack_flow": "#ff6b6b",
-                "threat_model": "#ffa94d",
-                "anomalies": "#ffd43b",
-                "ot_events": "#63e6be",
-                "ioc": "#69db7c",
-                "incidents": "#ff6b6b",
-                "threat_intel": "#74c0fc",
-                "history": "#adb5bd",
-            }
-
-            # Section colors for workflow guidance
-            self.section_colors = {
-                "TRIAGE": "#ff6b6b",    # Red - urgent attention
-                "ANALYZE": "#74c0fc",   # Blue - deep dive
-                "THREAT": "#ffd43b",    # Yellow - threat intel
-                "REPORT": "#69db7c",    # Green - documentation
-            }
-
-            # Create scroll area for navigation
+            # navigation
             scroll = QScrollArea()
             scroll.setWidgetResizable(True)
             scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-            scroll.setStyleSheet("""
-                QScrollArea {
-                    border: none;
-                    background-color: transparent;
-                }
-                QScrollBar:vertical {
-                    background-color: transparent;
-                    width: 6px;
-                    margin: 0;
-                }
-                QScrollBar::handle:vertical {
-                    background-color: #3d444d;
-                    border-radius: 3px;
-                    min-height: 20px;
-                }
-                QScrollBar::handle:vertical:hover {
-                    background-color: #545d68;
-                }
-                QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
-                    height: 0;
-                }
-            """)
+            scroll.setFrameShape(QFrame.NoFrame)
+            nav = QWidget()
+            nav.setAttribute(Qt.WA_TranslucentBackground, True)
+            nav_layout = QVBoxLayout(nav)
+            nav_layout.setContentsMargins(0, 0, 0, 8)
+            nav_layout.setSpacing(0)
 
-            nav_container = QWidget()
-            nav_layout = QVBoxLayout(nav_container)
-            nav_layout.setContentsMargins(8, 8, 8, 8)
-            nav_layout.setSpacing(4)
-
-            # Build grouped navigation with collapsible sections
-            self.nav_buttons = {}  # Store button references
-            self.item_to_index = {}  # Map button to content index
-            self.section_containers = {}  # Store section containers for collapse
-            self.section_expanded = {}  # Track section expand state
-
-            for section_name, section_icon, items in self.NAV_SECTIONS:
-                # Clickable section header
-                section_header = QPushButton(f"  ▼ {section_name}")
-                section_header.setObjectName(f"section_{section_name}")
-                section_header.setStyleSheet("""
-                    QPushButton {
-                        background-color: transparent;
-                        border: none;
-                        text-align: left;
-                        font-weight: bold;
-                        padding: 8px 4px;
-                    }
-                    QPushButton:hover {
-                        background-color: #3d444d;
-                        border-radius: 4px;
-                    }
-                """)
-                section_header.setCursor(Qt.PointingHandCursor)
-                section_header.clicked.connect(
-                    lambda checked, s=section_name: self._toggle_section(s)
-                )
-                self.section_headers.append((section_header, section_name))
-                self.section_expanded[section_name] = True
-                nav_layout.addWidget(section_header)
-
-                # Section items container (collapsible)
-                section_container = QWidget()
-                section_container.setObjectName(f"container_{section_name}")
-                section_layout = QVBoxLayout(section_container)
-                section_layout.setContentsMargins(0, 0, 0, 0)
-                section_layout.setSpacing(2)
-                self.section_containers[section_name] = section_container
-
-                # Section items
-                for key, icon, label, tooltip in items:
-                    btn = QPushButton(f"  {icon}  {label}")
-                    btn.setObjectName(f"nav_{key}")
+            self.nav_buttons = {}
+            self.item_to_index = {}
+            for section, items in self.NAV_SECTIONS:
+                title = QLabel(section)
+                title.setObjectName("NavSection")
+                nav_layout.addWidget(title)
+                for key, label, tooltip in items:
+                    btn = QPushButton(f"  {label}")
+                    btn.setObjectName("NavItem")
                     btn.setToolTip(tooltip)
                     btn.setCheckable(True)
-                    btn.setMinimumHeight(40)
-
-                    # Store mapping
-                    content_index = self.KEY_TO_INDEX.get(key, 0)
-                    self.nav_buttons[key] = btn
-                    self.item_to_index[key] = content_index
-
-                    # Connect click
+                    btn.setCursor(Qt.PointingHandCursor)
+                    btn.setIconSize(QSize(18, 18))
                     btn.clicked.connect(lambda checked, k=key: self._on_nav_click(k))
-                    section_layout.addWidget(btn)
-
-                nav_layout.addWidget(section_container)
-
+                    self.nav_buttons[key] = btn
+                    self.item_to_index[key] = self.KEY_TO_INDEX[key]
+                    nav_layout.addWidget(btn)
             nav_layout.addStretch()
-            scroll.setWidget(nav_container)
+            scroll.setWidget(nav)
             layout.addWidget(scroll, 1)
 
-            # Select first item by default
-            if "dashboard" in self.nav_buttons:
-                self.nav_buttons["dashboard"].setChecked(True)
+            # footer: theme switch + zoom
+            footer = QWidget()
+            fl = QVBoxLayout(footer)
+            fl.setContentsMargins(14, 10, 14, 14)
+            fl.setSpacing(10)
 
-            # Keep nav_list for backward compatibility (hidden)
-            self.nav_list = QListWidget()
-            self.nav_list.setVisible(False)
-            for idx, (key, icon, label, tooltip) in enumerate(self.NAV_ITEMS):
-                item = QListWidgetItem(f"  {icon}  {label}")
-                item.setData(Qt.UserRole, idx)
-                item.setData(Qt.UserRole + 1, key)
-                self.nav_list.addItem(item)
+            switch = QFrame()
+            switch.setObjectName("ThemeSwitch")
+            sl = QHBoxLayout(switch)
+            sl.setContentsMargins(3, 3, 3, 3)
+            sl.setSpacing(2)
+            self.theme_buttons = {}
+            for name, label in (("light", "☀  Light"), ("dark", "☾  Dark")):
+                b = QPushButton(label)
+                b.setObjectName("ThemeSeg")
+                b.setCheckable(True)
+                b.setCursor(Qt.PointingHandCursor)
+                b.clicked.connect(lambda checked, n=name: self.set_theme(n))
+                self.theme_buttons[name] = b
+                sl.addWidget(b)
+            fl.addWidget(switch)
+            # backwards-compatible handle used by older code/tests
+            self.theme_btn = self.theme_buttons["dark"]
 
-            layout.addWidget(self.nav_list)
-            layout.addStretch()
-
-            # Font zoom controls
-            zoom_container = QWidget()
-            zoom_layout = QHBoxLayout(zoom_container)
-            zoom_layout.setContentsMargins(12, 8, 12, 8)
-            zoom_layout.setSpacing(4)
-
-            zoom_label = QLabel("🔍")
-            zoom_label.setStyleSheet("font-size: 14px; color: #e6edf3;")
-            zoom_layout.addWidget(zoom_label)
-
+            zoom = QHBoxLayout()
+            zoom.setSpacing(6)
+            zl = QLabel("Text size")
+            zl.setObjectName("AppSubtitle")
+            zoom.addWidget(zl)
+            zoom.addStretch()
             self.zoom_out_btn = QPushButton("−")
-            self.zoom_out_btn.setFixedSize(28, 28)
-            self.zoom_out_btn.setStyleSheet("""
-                QPushButton {
-                    background-color: #3d444d;
-                    border: 1px solid #3d444d;
-                    border-radius: 4px;
-                    color: #f0f6fc;
-                    font-size: 16px;
-                    font-weight: bold;
-                }
-                QPushButton:hover {
-                    background-color: #3d444d;
-                }
-            """)
-            self.zoom_out_btn.clicked.connect(self._on_zoom_out)
-            zoom_layout.addWidget(self.zoom_out_btn)
-
-            self.zoom_value_label = QLabel("100%")
-            self.zoom_value_label.setFixedWidth(42)
-            self.zoom_value_label.setAlignment(Qt.AlignCenter)
-            self.zoom_value_label.setStyleSheet("color: #e6edf3; font-size: 11px;")
-            zoom_layout.addWidget(self.zoom_value_label)
-
             self.zoom_in_btn = QPushButton("+")
-            self.zoom_in_btn.setFixedSize(28, 28)
-            self.zoom_in_btn.setStyleSheet("""
-                QPushButton {
-                    background-color: #3d444d;
-                    border: 1px solid #3d444d;
-                    border-radius: 4px;
-                    color: #f0f6fc;
-                    font-size: 16px;
-                    font-weight: bold;
-                }
-                QPushButton:hover {
-                    background-color: #3d444d;
-                }
-            """)
+            self.zoom_value_label = QLabel("100%")
+            self.zoom_value_label.setObjectName("AppSubtitle")
+            self.zoom_value_label.setAlignment(Qt.AlignCenter)
+            self.zoom_value_label.setFixedWidth(40)
+            for b in (self.zoom_out_btn, self.zoom_in_btn):
+                b.setObjectName("SidebarTool")
+                b.setFixedSize(30, 28)
+                b.setCursor(Qt.PointingHandCursor)
+            self.zoom_out_btn.setToolTip("Smaller text  (Ctrl+-)")
+            self.zoom_in_btn.setToolTip("Larger text  (Ctrl+=)")
+            self.zoom_out_btn.clicked.connect(self._on_zoom_out)
             self.zoom_in_btn.clicked.connect(self._on_zoom_in)
-            zoom_layout.addWidget(self.zoom_in_btn)
+            zoom.addWidget(self.zoom_out_btn)
+            zoom.addWidget(self.zoom_value_label)
+            zoom.addWidget(self.zoom_in_btn)
+            fl.addLayout(zoom)
+            layout.addWidget(footer)
 
-            layout.addWidget(zoom_container)
+            self.nav_buttons["dashboard"].setChecked(True)
+            self.update_theme()
 
-            # Theme toggle at bottom - Dark ↔ Slate
-            self.theme_btn = QPushButton("🎨 Dark ↔ Slate")
-            self.theme_btn.setToolTip("Toggle between Dark and Navy/Slate themes")
-            self.theme_btn.setStyleSheet("""
-                QPushButton {
-                    background-color: transparent;
-                    border: none;
-                    color: #e6edf3;
-                    padding: 14px 18px;
-                    text-align: left;
-                    font-size: 13px;
-                }
-                QPushButton:hover {
-                    background-color: #3d444d;
-                    color: #f0f6fc;
-                    border-radius: 8px;
-                }
-            """)
-            self.theme_btn.clicked.connect(self._on_theme_toggle)
-            layout.addWidget(self.theme_btn)
-
-        def _on_theme_toggle(self):
-            if self.theme_manager:
-                self.theme_manager.toggle_theme()
+        # ---- theme / zoom ---------------------------------------------------
+        def set_theme(self, name: str):
+            if self.theme_manager and name != self.theme_manager.current_theme:
+                self.theme_manager.set_theme(name)
                 self.theme_changed.emit()
+            self._sync_theme_buttons()
+
+        def toggle_theme(self):
+            if self.theme_manager:
+                self.set_theme("light" if self.theme_manager.current_theme == "dark" else "dark")
+
+        _on_theme_toggle = toggle_theme
+
+        def _sync_theme_buttons(self):
+            current = self.theme_manager.current_theme if self.theme_manager else "dark"
+            for name, b in self.theme_buttons.items():
+                b.setChecked(name == current)
 
         def _on_zoom_in(self):
             if self.theme_manager:
-                new_scale = min(1.5, self.theme_manager.font_scale + 0.1)
-                self.theme_manager.set_font_scale(new_scale)
-                self.zoom_value_label.setText(f"{int(new_scale * 100)}%")
+                self.theme_manager.set_font_scale(round(self.theme_manager.font_scale + 0.1, 1))
+                self.update_zoom_label()
                 self.theme_changed.emit()
 
         def _on_zoom_out(self):
             if self.theme_manager:
-                new_scale = max(0.8, self.theme_manager.font_scale - 0.1)
-                self.theme_manager.set_font_scale(new_scale)
-                self.zoom_value_label.setText(f"{int(new_scale * 100)}%")
+                self.theme_manager.set_font_scale(round(self.theme_manager.font_scale - 0.1, 1))
+                self.update_zoom_label()
                 self.theme_changed.emit()
 
-        def _toggle_section(self, section_name: str):
-            """Toggle section expand/collapse"""
-            if section_name not in self.section_containers:
-                return
-
-            container = self.section_containers[section_name]
-            is_expanded = self.section_expanded.get(section_name, True)
-
-            # Toggle state
-            new_state = not is_expanded
-            self.section_expanded[section_name] = new_state
-
-            # Update visibility
-            container.setVisible(new_state)
-
-            # Update header icon
-            for header, name in self.section_headers:
-                if name == section_name:
-                    icon = "▼" if new_state else "▶"
-                    header.setText(f"  {icon} {section_name}")
-                    break
-
-        def collapse_all_sections(self):
-            """Collapse all sections"""
-            for section_name in self.section_containers:
-                self.section_expanded[section_name] = False
-                self.section_containers[section_name].setVisible(False)
-                for header, name in self.section_headers:
-                    if name == section_name:
-                        header.setText(f"  ▶ {section_name}")
-                        break
-
-        def expand_all_sections(self):
-            """Expand all sections"""
-            for section_name in self.section_containers:
-                self.section_expanded[section_name] = True
-                self.section_containers[section_name].setVisible(True)
-                for header, name in self.section_headers:
-                    if name == section_name:
-                        header.setText(f"  ▼ {section_name}")
-                        break
-
         def update_zoom_label(self):
-            """Update zoom label to current scale"""
             if self.theme_manager:
-                self.zoom_value_label.setText(f"{int(self.theme_manager.font_scale * 100)}%")
+                self.zoom_value_label.setText(f"{int(round(self.theme_manager.font_scale * 100))}%")
 
+        # ---- navigation -------------------------------------------------------
         def _on_nav_click(self, key: str):
-            """Handle navigation button click - grouped workflow navigation"""
-            # Uncheck all other buttons
-            for btn_key, btn in self.nav_buttons.items():
-                if btn_key != key:
-                    btn.setChecked(False)
-
-            # Check clicked button
-            if key in self.nav_buttons:
-                self.nav_buttons[key].setChecked(True)
-
-            # Emit navigation signal with correct content index
-            content_index = self.item_to_index.get(key, 0)
-            self.navigation_changed.emit(content_index)
+            for k, b in self.nav_buttons.items():
+                b.setChecked(k == key)
+            self._refresh_icons()
+            self.navigation_changed.emit(self.item_to_index.get(key, 0))
 
         def set_active_button(self, index: int):
-            """Highlight the button for a content index without emitting a signal.
-
-            Used by keyboard shortcuts (Ctrl+1..9); MainWindow already switched
-            the page. This method was missing, so the shortcuts raised
-            AttributeError.
-            """
-            for btn_key, btn in self.nav_buttons.items():
-                btn.setChecked(self.item_to_index.get(btn_key) == index)
+            """Highlight the item for a content index without emitting a signal."""
+            for k, b in self.nav_buttons.items():
+                b.setChecked(self.item_to_index.get(k) == index)
+            self._refresh_icons()
 
         def set_active_nav(self, key: str):
-            """Programmatically set active navigation item"""
             if key in self.nav_buttons:
                 self._on_nav_click(key)
 
-        def highlight_section(self, section_name: str, highlight: bool = True):
-            """Highlight a workflow section (e.g., when alerts are critical)"""
-            # This can be used to draw attention to specific sections
-
-        def update_theme(self):
-            """Update all sidebar elements with current theme colors and font scale"""
+        def _refresh_icons(self):
             if not self.theme_manager:
                 return
-
             t = self.theme_manager.THEMES[self.theme_manager.current_theme]
-            fs = self.theme_manager.scale_font
-
-            # Update logo, tagline, version labels with theme colors and font scale
-            self.logo_label.setStyleSheet(f"""
-                font-size: {fs(16)}px;
-                font-weight: bold;
-                color: {t['text_primary']};
-            """)
-            self.tagline_label.setStyleSheet(f"""
-                font-size: {fs(10)}px;
-                color: {t['text_tertiary']};
-            """)
-            self.version_label.setStyleSheet(f"""
-                font-size: {fs(9)}px;
-                color: {t['text_muted']};
-            """)
-
-            # Update section headers with workflow colors and font scale
-            for section_header, section_name in self.section_headers:
-                section_color = self.section_colors.get(section_name, t['text_tertiary'])
-                section_header.setStyleSheet(f"""
-                    font-size: {fs(10)}px;
-                    font-weight: 700;
-                    letter-spacing: 1px;
-                    padding: 16px 12px 6px 12px;
-                    color: {section_color};
-                """)
-
-            # Update nav buttons with font scale
             for key, btn in self.nav_buttons.items():
-                icon_color = self.icon_colors.get(key, t['text_secondary'])
-                btn.setStyleSheet(f"""
-                    QPushButton {{
-                        background-color: transparent;
-                        border: none;
-                        border-left: 3px solid transparent;
-                        border-radius: 0;
-                        color: {t['text_secondary']};
-                        font-size: {fs(13)}px;
-                        font-weight: 500;
-                        text-align: left;
-                        padding: 10px 16px;
-                        margin: 2px 8px;
-                    }}
-                    QPushButton:hover {{
-                        background-color: {t['sidebar_hover']};
-                        color: {t['text_primary']};
-                    }}
-                    QPushButton:checked {{
-                        background-color: {t['sidebar_active']};
-                        color: {icon_color};
-                        font-weight: 600;
-                        border-left: 3px solid {icon_color};
-                    }}
-                """)
+                svg = SOCIcons.NAV_ICONS.get(key)
+                if svg:
+                    color = t["accent"] if btn.isChecked() else t["text_3"]
+                    btn.setIcon(SOCIcons.icon(svg, color, 18))
 
-            # Update zoom controls with theme colors and font scale
-            zoom_btn_style = f"""
-                QPushButton {{
-                    background-color: {t['bg_tertiary']};
-                    border: 1px solid {t['border_light']};
-                    border-radius: 4px;
-                    color: {t['text_primary']};
-                    font-size: {fs(16)}px;
-                    font-weight: bold;
-                }}
-                QPushButton:hover {{
-                    background-color: {t['bg_hover']};
-                    border-color: {t['accent_blue']};
-                }}
-            """
-            self.zoom_out_btn.setStyleSheet(zoom_btn_style)
-            self.zoom_in_btn.setStyleSheet(zoom_btn_style)
-            self.zoom_value_label.setStyleSheet(f"""
-                color: {t['text_secondary']};
-                font-size: {fs(11)}px;
-            """)
-            self.zoom_value_label.setText(f"{int(self.theme_manager.font_scale * 100)}%")
-
-            # Update theme toggle button
-            self.theme_btn.setStyleSheet(f"""
-                QPushButton {{
-                    background-color: transparent;
-                    border: none;
-                    color: {t['text_secondary']};
-                    padding: 14px 18px;
-                    text-align: left;
-                    font-size: {fs(13)}px;
-                }}
-                QPushButton:hover {{
-                    background-color: {t['sidebar_hover']};
-                    color: {t['text_primary']};
-                    border-radius: 8px;
-                }}
-            """)
-
+        def update_theme(self):
+            """Icons and toggles follow the theme; colours come from the app style sheet."""
+            self._sync_theme_buttons()
+            self.update_zoom_label()
+            self._refresh_icons()
 
     # =========================================================================
-    # TOP BAR - PCAP Info & Controls (Enhanced with better icons)
+    # TOP BAR
     # =========================================================================
 
     class TopBar(QWidget):
-        """Top bar with PCAP info, analysis status, and professional action buttons"""
+        """Status, capture info, progress and the main actions."""
         import_clicked = pyqtSignal()
         export_clicked = pyqtSignal()
         cancel_clicked = pyqtSignal()
+
+        STATUS_TOKENS = {
+            "ready": "low", "info": "accent", "warning": "medium",
+            "error": "critical", "processing": "purple",
+        }
 
         def __init__(self, theme_manager=None, parent=None):
             super().__init__(parent)
             self.theme_manager = theme_manager
             self.setObjectName("TopBar")
-            self.setMinimumHeight(60)
+            self.setAttribute(Qt.WA_StyledBackground, True)
+            self.setFixedHeight(60)
+            self._status_type = "ready"
 
             layout = QHBoxLayout(self)
-            layout.setContentsMargins(24, 0, 24, 0)
-            layout.setSpacing(20)
-
-            # Left: Status indicator with pulsing effect
-            status_container = QWidget()
-            status_layout = QHBoxLayout(status_container)
-            status_layout.setContentsMargins(0, 0, 0, 0)
-            status_layout.setSpacing(10)
+            layout.setContentsMargins(20, 0, 20, 0)
+            layout.setSpacing(14)
 
             self.status_dot = QLabel("●")
-            self.status_dot.setStyleSheet("color: #69db7c; font-size: 14px;")
-            status_layout.addWidget(self.status_dot)
+            layout.addWidget(self.status_dot)
+            self.status_label = QLabel("Ready — open a PCAP file to start")
+            self.status_label.setStyleSheet("font-weight: 600;")
+            layout.addWidget(self.status_label)
 
-            self.status_label = QLabel("Ready — Select PCAP file to analyze")
-            self.status_label.setStyleSheet("color: #e6edf3; font-size: 13px; font-weight: 500;")
-            status_layout.addWidget(self.status_label)
-            layout.addWidget(status_container)
-
-            # PCAP info (hidden initially) - with better icons
             self.pcap_info = QLabel("")
-            self.pcap_info.setStyleSheet("color: #74c0fc; font-size: 12px; font-weight: 500;")
+            self.pcap_info.setObjectName("FileChip")
+            self.pcap_info.setFixedHeight(26)
             self.pcap_info.setVisible(False)
             layout.addWidget(self.pcap_info)
 
             layout.addStretch()
 
-            # Progress section: label + bar with ETA
-            progress_container = QWidget()
-            progress_layout = QVBoxLayout(progress_container)
-            progress_layout.setContentsMargins(0, 2, 0, 2)
-            progress_layout.setSpacing(4)
-
-            # Progress info row: status + ETA
-            progress_info = QHBoxLayout()
-            progress_info.setSpacing(8)
-
+            progress = QWidget()
+            pl = QVBoxLayout(progress)
+            pl.setContentsMargins(0, 0, 0, 0)
+            pl.setSpacing(4)
+            info = QHBoxLayout()
             self.progress_label = QLabel("")
-            self.progress_label.setStyleSheet("color: #bc8cff; font-size: 11px; font-weight: 500;")
+            self.progress_label.setObjectName("AppSubtitle")
             self.progress_label.setVisible(False)
-            progress_info.addWidget(self.progress_label)
-
-            progress_info.addStretch()
-
+            info.addWidget(self.progress_label)
+            info.addStretch()
             self.eta_label = QLabel("")
-            self.eta_label.setStyleSheet("color: #8b949e; font-size: 11px;")
+            self.eta_label.setObjectName("AppSubtitle")
             self.eta_label.setVisible(False)
-            progress_info.addWidget(self.eta_label)
-
-            progress_layout.addLayout(progress_info)
-
+            info.addWidget(self.eta_label)
+            pl.addLayout(info)
             self.progress_bar = QProgressBar()
-            self.progress_bar.setMinimumWidth(280)
-            self.progress_bar.setFixedHeight(14)  # Slightly taller for visibility
+            self.progress_bar.setMinimumWidth(260)
+            self.progress_bar.setTextVisible(False)
             self.progress_bar.setVisible(False)
-            self.progress_bar.setTextVisible(True)  # Show percentage
-            self.progress_bar.setFormat("%p%")
-            self.progress_bar.setStyleSheet("""
-                QProgressBar {
-                    border: 1px solid #3d444d;
-                    border-radius: 7px;
-                    background-color: #3d444d;
-                    text-align: center;
-                    color: #f0f6fc;
-                    font-size: 10px;
-                    font-weight: 600;
-                }
-                QProgressBar::chunk {
-                    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                        stop:0 #388bfd, stop:1 #58a6ff);
-                    border-radius: 6px;
-                }
-            """)
-            progress_layout.addWidget(self.progress_bar)
+            pl.addWidget(self.progress_bar)
+            layout.addWidget(progress)
 
-            layout.addWidget(progress_container)
-
-            # Track timing for ETA calculation
-            self._progress_start_time = None
-            self._last_progress_value = 0
-
-            # Action buttons with modern styling
-            self.btn_cancel = QPushButton("  ✕  Cancel")
+            self.btn_cancel = QPushButton("Cancel")
             self.btn_cancel.setObjectName("BtnDanger")
             self.btn_cancel.setEnabled(False)
-            self.btn_cancel.setMinimumWidth(100)
-            self.btn_cancel.setMinimumHeight(36)
+            self.btn_cancel.setVisible(False)
             self.btn_cancel.clicked.connect(self.cancel_clicked.emit)
             layout.addWidget(self.btn_cancel)
 
-            self.btn_export = QPushButton("  ↓  Export")
+            self.btn_export = QPushButton("Export report")
             self.btn_export.setEnabled(False)
-            self.btn_export.setMinimumWidth(100)
-            self.btn_export.setMinimumHeight(36)
+            self.btn_export.setToolTip("Save the analysis as an Excel report  (Ctrl+E)")
             self.btn_export.clicked.connect(self.export_clicked.emit)
             layout.addWidget(self.btn_export)
 
-            self.btn_import = QPushButton("  ◈  Import PCAP")
+            self.btn_import = QPushButton("Open PCAP")
             self.btn_import.setObjectName("BtnPrimary")
-            self.btn_import.setMinimumWidth(140)
-            self.btn_import.setMinimumHeight(36)
+            self.btn_import.setToolTip("Analyze a .pcap / .pcapng file  (Ctrl+O)")
             self.btn_import.clicked.connect(self.import_clicked.emit)
             layout.addWidget(self.btn_import)
 
+            self.btn_cancel.installEventFilter(self)
+            self.update_theme()
+
+        def eventFilter(self, obj, event):
+            # Cancel is only shown while an analysis can actually be cancelled
+            from PyQt5.QtCore import QEvent
+            if obj is self.btn_cancel and event.type() == QEvent.EnabledChange:
+                self.btn_cancel.setVisible(self.btn_cancel.isEnabled())
+            return super().eventFilter(obj, event)
+
+        def update_theme(self):
+            if not self.theme_manager:
+                return
+            t = self.theme_manager.THEMES[self.theme_manager.current_theme]
+            color = t[self.STATUS_TOKENS.get(self._status_type, "text_3")]
+            self.status_dot.setStyleSheet(f"color: {color}; font-size: 12px;")
+            for btn, svg in ((self.btn_import, SOCIcons.IMPORT), (self.btn_export, SOCIcons.EXPORT),
+                             (self.btn_cancel, SOCIcons.CANCEL)):
+                col = t["on_accent"] if btn is self.btn_import else (
+                    t["critical"] if btn is self.btn_cancel else t["text_2"])
+                btn.setIcon(SOCIcons.icon(svg, col, 16))
+
         def set_status(self, message: str, status_type: str = "info"):
-            """Update status with appropriate color and icon"""
-            status_configs = {
-                "ready": ("●", "#3fb950"),
-                "info": ("●", "#58a6ff"),
-                "warning": ("◬", "#d29922"),
-                "error": ("◉", "#f85149"),
-                "processing": ("◌", "#a371f7"),
-            }
-            icon, color = status_configs.get(status_type, ("●", "#8b949e"))
-            self.status_dot.setText(icon)
-            self.status_dot.setStyleSheet(f"color: {color}; font-size: 14px;")
+            self._status_type = status_type
             self.status_label.setText(message)
+            self.update_theme()
 
         def set_pcap_info(self, filename: str, packets: int, duration: str):
-            """Display PCAP file information with clean icons"""
-            self.pcap_info.setText(f"◎ {filename}   ·   ▦ {packets:,} packets   ·   ⏱ {duration}")
+            self.pcap_info.setText(f"{filename}   ·   {packets:,} packets   ·   {duration}")
             self.pcap_info.setVisible(True)
 
         def set_progress(self, current: int, total: int, message: str = ""):
             import time
             if total > 0:
-                # Initialize timing on first call
                 if self._progress_start_time is None or current < self._last_progress_value:
                     self._progress_start_time = time.time()
                     self._last_progress_value = 0
-
                 self.progress_bar.setMaximum(total)
                 self.progress_bar.setValue(current)
-                self.progress_bar.setVisible(True)
-                self.progress_label.setVisible(True)
-                self.eta_label.setVisible(True)
-
-                # Update status message
+                for w in (self.progress_bar, self.progress_label, self.eta_label):
+                    w.setVisible(True)
                 if message:
                     self.progress_label.setText(message)
                 elif current > 0:
-                    self.progress_label.setText(f"▶ {current:,} / ~{total:,} packets")
-
-                # Calculate and show ETA
+                    self.progress_label.setText(f"{current:,} / ~{total:,} packets")
                 elapsed = time.time() - self._progress_start_time
                 if current > 0 and elapsed > 1:
-                    rate = current / elapsed  # packets per second
-                    remaining = total - current
-                    eta_seconds = remaining / rate if rate > 0 else 0
-
-                    if eta_seconds > 60:
-                        eta_str = f"~{int(eta_seconds / 60)}m {int(eta_seconds % 60)}s remaining"
-                    elif eta_seconds > 0:
-                        eta_str = f"~{int(eta_seconds)}s remaining"
+                    rate = current / elapsed
+                    eta = (total - current) / rate if rate > 0 else 0
+                    if eta > 60:
+                        eta_str = f"~{int(eta // 60)}m {int(eta % 60)}s left"
+                    elif eta > 0:
+                        eta_str = f"~{int(eta)}s left"
                     else:
-                        eta_str = "Almost done..."
-
-                    self.eta_label.setText(f"⏱ {eta_str} ({rate:,.0f} pkt/s)")
+                        eta_str = "almost done"
+                    self.eta_label.setText(f"{eta_str} · {rate:,.0f} pkt/s")
                 else:
-                    self.eta_label.setText("Calculating...")
-
+                    self.eta_label.setText("estimating…")
                 self._last_progress_value = current
             else:
-                self.progress_bar.setVisible(False)
-                self.progress_label.setVisible(False)
-                self.eta_label.setVisible(False)
+                for w in (self.progress_bar, self.progress_label, self.eta_label):
+                    w.setVisible(False)
                 self.progress_label.setText("")
                 self.eta_label.setText("")
                 self._progress_start_time = None
+
+        _progress_start_time = None
+        _last_progress_value = 0
 
 
     # =========================================================================

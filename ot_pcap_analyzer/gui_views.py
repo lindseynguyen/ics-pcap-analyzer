@@ -804,208 +804,182 @@ if HAS_PYQT5:
     # =========================================================================
 
     class DashboardView(QWidget):
-        """Main dashboard with key security metrics and enhanced styling"""
+        """Security overview: KPIs, risk breakdown, protocols, alerts and ATT&CK techniques."""
+
+        navigate_requested = pyqtSignal(str)
 
         def __init__(self, theme_manager=None, parent=None):
             super().__init__(parent)
+            from .gui_components import BarList, Card, KeyValueList, KpiCard, Pill
             self.theme_manager = theme_manager
 
-            layout = QVBoxLayout(self)
-            layout.setContentsMargins(24, 20, 24, 20)
-            layout.setSpacing(24)
+            outer = QVBoxLayout(self)
+            outer.setContentsMargins(0, 0, 0, 0)
+            scroll = QScrollArea()
+            scroll.setWidgetResizable(True)
+            scroll.setFrameShape(QFrame.NoFrame)
+            outer.addWidget(scroll)
+            page = QWidget()
+            page.setObjectName("Page")
+            scroll.setWidget(page)
+            layout = QVBoxLayout(page)
+            layout.setContentsMargins(28, 22, 28, 24)
+            layout.setSpacing(18)
 
-            # Title with icon
-            title_row = QHBoxLayout()
-            title_icon = QLabel("◉")
-            title_icon.setStyleSheet("font-size: 26px; color: #74c0fc;")
-            title_row.addWidget(title_icon)
+            # header
+            head = QHBoxLayout()
+            titles = QVBoxLayout()
+            titles.setSpacing(2)
+            title = QLabel("Security overview")
+            title.setObjectName("PageTitle")
+            titles.addWidget(title)
+            self.subtitle = QLabel("Open a PCAP / PCAPNG capture to analyse its OT traffic.")
+            self.subtitle.setObjectName("PageSubtitle")
+            titles.addWidget(self.subtitle)
+            head.addLayout(titles, 1)
+            self.status_badge = Pill("Waiting for a capture", "accent")
+            head.addWidget(self.status_badge, 0, Qt.AlignTop)
+            layout.addLayout(head)
 
-            title = QLabel("Security Overview")
-            title.setStyleSheet("font-size: 22px; font-weight: 700; margin-left: 10px; color: #f0f6fc;")
-            title_row.addWidget(title)
+            # KPI tiles
+            kpis = QHBoxLayout()
+            kpis.setSpacing(14)
+            self.metric_packets = KpiCard("Packets", "accent")
+            self.metric_events = KpiCard("OT events", "purple")
+            self.metric_assets = KpiCard("Assets", "cyan")
+            self.metric_anomalies = KpiCard("Alerts", "medium")
+            self.metric_critical = KpiCard("Critical", "critical")
+            targets = {self.metric_events: "ot_events", self.metric_assets: "assets",
+                       self.metric_anomalies: "anomalies", self.metric_critical: "anomalies"}
+            for card in (self.metric_packets, self.metric_events, self.metric_assets,
+                         self.metric_anomalies, self.metric_critical):
+                kpis.addWidget(card)
+                if card in targets:
+                    card.clicked.connect(lambda key=targets[card]: self.navigate_requested.emit(key))
+            layout.addLayout(kpis)
 
-            # Status badge
-            self.status_badge = QLabel("◌ Awaiting Analysis")
-            self.status_badge.setStyleSheet("""
-                font-size: 12px; font-weight: 600;
-                color: #e6edf3;
-                padding: 4px 12px;
-                background-color: #3d444d;
-                border-radius: 12px;
-                margin-left: 16px;
-            """)
-            title_row.addWidget(self.status_badge)
+            # row: risk, protocols, capture facts
+            row = QHBoxLayout()
+            row.setSpacing(14)
+            risk_card = Card("Alerts by severity")
+            self.risk_bars = BarList("No alerts", max_rows=4)
+            risk_card.body.addWidget(self.risk_bars)
+            row.addWidget(risk_card, 1)
+            proto_card = Card("OT protocols")
+            self.proto_bars = BarList("No OT traffic decoded yet", max_rows=8)
+            proto_card.body.addWidget(self.proto_bars)
+            row.addWidget(proto_card, 1)
+            facts_card = Card("Capture")
+            self.facts = KeyValueList()
+            self.facts.set_items([("File", "–"), ("Size", "–"), ("Duration", "–"), ("Time range", "–")])
+            facts_card.body.addWidget(self.facts)
+            row.addWidget(facts_card, 1)
+            layout.addLayout(row)
 
-            title_row.addStretch()
-            layout.addLayout(title_row)
-
-            # Top metrics row with enhanced styling
-            metrics_row = QHBoxLayout()
-            metrics_row.setSpacing(16)
-
-            self.metric_packets = CompactMetric("Total Packets", "0", "accent_blue", "packets", theme_manager, icon="▦")
-            self.metric_events = CompactMetric("OT Events", "0", "accent_purple", "events", theme_manager, icon="⚙")
-            self.metric_assets = CompactMetric("Assets", "0", "accent_green", "assets", theme_manager, icon="◫")
-            self.metric_anomalies = CompactMetric("Anomalies", "0", "accent_yellow", "anomalies", theme_manager, icon="△")
-            self.metric_critical = CompactMetric("Critical", "0", "risk_critical", "critical", theme_manager, icon="◉")
-
-            for m in [self.metric_packets, self.metric_events, self.metric_assets,
-                     self.metric_anomalies, self.metric_critical]:
-                metrics_row.addWidget(m)
-
-            metrics_row.addStretch()
-            layout.addLayout(metrics_row)
-
-            # Two column layout
-            columns = QHBoxLayout()
-            columns.setSpacing(20)
-
-            # Left column - Analysis summary
-            left_col = QVBoxLayout()
-            left_col.setSpacing(16)
-
-            summary_group = QGroupBox("◎ Analysis Summary")
-            summary_layout = QVBoxLayout(summary_group)
-            self.summary_text = QTextEdit()
-            self.summary_text.setReadOnly(True)
-            self.summary_text.setMinimumHeight(200)
-            self.summary_text.setHtml("""
-                <div style='color:#6e7681; padding:30px; text-align:center;'>
-                    <div style='font-size: 32px; margin-bottom: 12px;'>◈</div>
-                    <div style='font-size: 14px;'>No analysis data</div>
-                    <div style='font-size: 12px; margin-top: 8px; color: #484f58;'>
-                        Import a PCAP file to begin security analysis
-                    </div>
-                </div>
-            """)
-            summary_layout.addWidget(self.summary_text)
-            left_col.addWidget(summary_group)
-
-            # Protocol distribution
-            proto_group = QGroupBox("⚙ Protocol Distribution")
-            proto_layout = QVBoxLayout(proto_group)
-            self.proto_table = QTableWidget()
-            self.proto_table.setColumnCount(3)
-            self.proto_table.setHorizontalHeaderLabels(["◎ Protocol", "▦ Count", "◇ %"])
-            self.proto_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
-            proto_layout.addWidget(self.proto_table)
-            left_col.addWidget(proto_group)
-
-            columns.addLayout(left_col, 1)
-
-            # Right column - Critical alerts
-            right_col = QVBoxLayout()
-            right_col.setSpacing(16)
-
-            alerts_group = QGroupBox("⚡ Critical Alerts")
-            alerts_layout = QVBoxLayout(alerts_group)
+            # row: alerts table + ATT&CK techniques
+            row2 = QHBoxLayout()
+            row2.setSpacing(14)
+            alerts_card = Card("High-severity alerts")
             self.alerts_table = QTableWidget()
             self.alerts_table.setColumnCount(4)
-            self.alerts_table.setHorizontalHeaderLabels(["⏱ Time", "⚙ Type", "◈ Source", "◉ Severity"])
-            self.alerts_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
-            self.alerts_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+            self.alerts_table.setHorizontalHeaderLabels(["Severity", "Alert", "Source → Destination", "Time (UTC)"])
+            self.alerts_table.horizontalHeader().setMinimumSectionSize(60)
+            hdr = self.alerts_table.horizontalHeader()
+            hdr.setSectionResizeMode(QHeaderView.ResizeToContents)
+            hdr.setSectionResizeMode(1, QHeaderView.Stretch)
+            self.alerts_table.verticalHeader().setVisible(False)
             self.alerts_table.setAlternatingRowColors(True)
-            alerts_layout.addWidget(self.alerts_table)
-            right_col.addWidget(alerts_group)
+            self.alerts_table.setSelectionBehavior(QTableWidget.SelectRows)
+            self.alerts_table.setEditTriggers(QTableWidget.NoEditTriggers)
+            self.alerts_table.setShowGrid(False)
+            self.alerts_table.setMinimumHeight(300)
+            alerts_card.body.addWidget(self.alerts_table)
+            row2.addWidget(alerts_card, 3)
 
-            # MITRE techniques
-            mitre_group = QGroupBox("◆ Top MITRE Techniques")
-            mitre_layout = QVBoxLayout(mitre_group)
-            self.mitre_table = QTableWidget()
-            self.mitre_table.setColumnCount(3)
-            self.mitre_table.setHorizontalHeaderLabels(["◎ Technique", "▦ Count", "◉ Severity"])
-            self.mitre_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
-            self.mitre_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
-            mitre_layout.addWidget(self.mitre_table)
-            right_col.addWidget(mitre_group)
+            mitre_card = Card("Top MITRE ATT&CK techniques")
+            self.mitre_bars = BarList("No techniques mapped yet", max_rows=10)
+            mitre_card.body.addWidget(self.mitre_bars)
+            mitre_card.body.addStretch()
+            row2.addWidget(mitre_card, 2)
+            layout.addLayout(row2, 1)
 
-            columns.addLayout(right_col, 1)
-
-            layout.addLayout(columns)
+            # kept for backwards compatibility (older code referenced these)
+            self.summary_text = None
+            self.proto_table = None
+            self.mitre_table = None
 
         def update_dashboard(self, summary: dict):
-            """Update dashboard with analysis summary"""
-            self.metric_packets.set_value(f"{summary.get('PACKETS_PARSED', 0):,}")
-            self.metric_events.set_value(f"{summary.get('OT_EVENTS_TOTAL', 0):,}")
-            self.metric_assets.set_value(str(summary.get('OT_ASSETS', 0)))
-            self.metric_anomalies.set_value(str(summary.get('ANOMALIES_DETECTED', 0)))
-            self.metric_critical.set_value(str(summary.get('CRITICAL_EVENTS', 0)))
+            from .constants import MITRE_ATTACK_ENTERPRISE, MITRE_ATTACK_ICS
+            packets = summary.get('PACKETS_PARSED', 0)
+            anomalies = summary.get('ANOMALIES_DETECTED', 0)
+            critical = summary.get('CRITICAL_EVENTS', 0)
+            assets = summary.get('ASSETS_DISCOVERED', summary.get('OT_ASSETS', 0))
+            self.metric_packets.set_value(f"{packets:,}", f"{summary.get('CAPTURE_SIZE', '')}")
+            self.metric_events.set_value(f"{summary.get('OT_EVENTS_TOTAL', 0):,}",
+                                         f"{len(summary.get('OT_PROTOCOLS', {}) or {})} protocols")
+            self.metric_assets.set_value(f"{assets:,}", f"{summary.get('OT_ASSETS', 0)} OT devices")
+            self.metric_anomalies.set_value(f"{anomalies:,}", f"{summary.get('MITRE_TECHNIQUES', 0)} ATT&CK techniques")
+            self.metric_critical.set_value(f"{critical:,}", "need attention" if critical else "none")
 
-            # Update status badge
-            if summary.get('PACKETS_PARSED', 0) > 0:
-                critical = summary.get('CRITICAL_EVENTS', 0)
-                if critical > 0:
-                    self.status_badge.setText(f"◉ {critical} Critical Alerts")
-                    self.status_badge.setStyleSheet("""
-                        font-size: 12px; font-weight: 600;
-                        color: #f85149;
-                        padding: 4px 12px;
-                        background-color: #f8514920;
-                        border-radius: 12px;
-                        margin-left: 16px;
-                    """)
+            self.subtitle.setText(
+                f"{summary.get('CAPTURE_FILE', '-')}  ·  {packets:,} packets  ·  {summary.get('DURATION_STR', '-')}")
+            if packets:
+                if critical:
+                    self.status_badge.set(f"{critical} critical alert{'s' if critical != 1 else ''}", "critical")
+                elif anomalies:
+                    self.status_badge.set(f"{anomalies} alerts to review", "medium")
                 else:
-                    self.status_badge.setText("● Analysis Complete")
-                    self.status_badge.setStyleSheet("""
-                        font-size: 12px; font-weight: 600;
-                        color: #3fb950;
-                        padding: 4px 12px;
-                        background-color: #3fb95020;
-                        border-radius: 12px;
-                        margin-left: 16px;
-                    """)
+                    self.status_badge.set("No alerts", "low")
 
-            # Summary HTML
-            html = f"""
-            <style>
-                body {{ font-family: 'JetBrains Mono', monospace; color: #f0f6fc; }}
-                table {{ width: 100%; border-collapse: collapse; }}
-                td {{ padding: 8px 0; border-bottom: 1px solid #3d444d; }}
-                .label {{ color: #e6edf3; width: 40%; }}
-                .value {{ color: #f0f6fc; font-weight: 500; }}
-            </style>
-            <table>
-                <tr><td class='label'>◎ Capture File</td><td class='value'>{_html.escape(str(summary.get('CAPTURE_FILE', '-')))}</td></tr>
-                <tr><td class='label'>▦ File Size</td><td class='value'>{_html.escape(str(summary.get('CAPTURE_SIZE', '-')))}</td></tr>
-                <tr><td class='label'>⏱ Duration</td><td class='value'>{_html.escape(str(summary.get('DURATION_STR', '-')))}</td></tr>
-                <tr><td class='label'>◷ Time Range</td><td class='value'>{_html.escape(str(summary.get('TIME_START', '')))} - {_html.escape(str(summary.get('TIME_END', '')))}</td></tr>
-                <tr><td class='label'>⚡ MITRE Techniques</td><td class='value'>{_html.escape(str(summary.get('MITRE_TECHNIQUES', '-')))}</td></tr>
-            </table>
-            """
-            self.summary_text.setHtml(html)
+            self.facts.set_items([
+                ("File", summary.get('CAPTURE_FILE', '-')),
+                ("Size", summary.get('CAPTURE_SIZE', '-')),
+                ("Duration", summary.get('DURATION_STR', '-')),
+                ("Start (UTC)", summary.get('TIME_START', '-')),
+                ("End (UTC)", summary.get('TIME_END', '-')),
+                ("Attack chains", summary.get('ATTACK_CHAINS', 0)),
+            ])
 
-            # Protocol distribution
-            proto_counts = summary.get('OT_PROTOCOLS', {})
-            total = sum(proto_counts.values()) or 1
-            self.proto_table.setRowCount(len(proto_counts))
-            for i, (proto, count) in enumerate(sorted(proto_counts.items(), key=lambda x: x[1], reverse=True)):
-                pct = count / total * 100
-                self.proto_table.setItem(i, 0, QTableWidgetItem(proto))
-                self.proto_table.setItem(i, 1, QTableWidgetItem(f"{count:,}"))
-                pct_item = QTableWidgetItem(f"{pct:.1f}%")
-                if pct > 50:
-                    pct_item.setForeground(QColor("#3fb950"))
-                self.proto_table.setItem(i, 2, pct_item)
+            protos = summary.get('OT_PROTOCOLS', {}) or {}
+            self.proto_bars.set_rows(
+                (name, count, "accent") for name, count in sorted(protos.items(), key=lambda x: -x[1]))
+
+            names = {**MITRE_ATTACK_ENTERPRISE, **MITRE_ATTACK_ICS}
+            top = summary.get('TOP_MITRE', {}) or {}
+            self.mitre_bars.set_rows(
+                (f"{tid}  {names.get(tid, '')}".strip(), count, "purple")
+                for tid, count in sorted(top.items(), key=lambda x: -x[1]))
 
         def update_alerts(self, anomalies: list):
-            """Update critical alerts table"""
-            critical_anomalies = [a for a in anomalies if a.severity in ("CRITICAL", "HIGH")][:20]
-            self.alerts_table.setRowCount(len(critical_anomalies))
+            from .gui_components import pretty_type, severity_item, short_time
+            counts = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0}
+            for a in anomalies:
+                sev = str(getattr(a, "severity", "")).upper()
+                if sev in counts:
+                    counts[sev] += 1
+            self.risk_bars.set_rows([
+                ("Critical", counts["CRITICAL"], "critical"), ("High", counts["HIGH"], "high"),
+                ("Medium", counts["MEDIUM"], "medium"), ("Low", counts["LOW"], "low")])
 
-            for i, a in enumerate(critical_anomalies):
-                self.alerts_table.setItem(i, 0, QTableWidgetItem(utc_str(a.timestamp)))
-                self.alerts_table.setItem(i, 1, QTableWidgetItem(a.anomaly_type))
-                self.alerts_table.setItem(i, 2, QTableWidgetItem(a.src_ip))
-
-                sev_item = QTableWidgetItem(a.severity)
-                color = "#f85149" if a.severity == "CRITICAL" else "#db6d28"
-                sev_item.setForeground(QColor(color))
-                self.alerts_table.setItem(i, 3, sev_item)
+            order = {"CRITICAL": 0, "HIGH": 1}
+            top = sorted((a for a in anomalies if a.severity in order),
+                         key=lambda a: (order[a.severity], str(a.timestamp)))[:50]
+            self.alerts_table.setRowCount(len(top))
+            for i, a in enumerate(top):
+                self.alerts_table.setItem(i, 0, severity_item(a.severity))
+                self.alerts_table.setItem(i, 1, QTableWidgetItem(pretty_type(a.anomaly_type)))
+                self.alerts_table.setItem(i, 2, QTableWidgetItem(f"{a.src_ip} → {a.dst_ip}"))
+                self.alerts_table.setItem(i, 3, QTableWidgetItem(short_time(a.timestamp)))
+                tip = str(getattr(a, "description", "") or "")
+                for c in range(4):
+                    self.alerts_table.item(i, c).setToolTip(tip)
 
         def update_theme(self):
-            for m in [self.metric_packets, self.metric_events, self.metric_assets,
-                     self.metric_anomalies, self.metric_critical]:
-                m.update_theme()
+            for w in (self.metric_packets, self.metric_events, self.metric_assets,
+                      self.metric_anomalies, self.metric_critical, self.status_badge):
+                w.update_theme()
+            for bars in (self.risk_bars, self.proto_bars, self.mitre_bars):
+                bars.update()
 
 
     # =========================================================================
@@ -1609,6 +1583,7 @@ if HAS_PYQT5:
 
             # Update protocol badges
             for badge in self.proto_badges.values():
+                badge.hide()
                 badge.deleteLater()
             self.proto_badges.clear()
 

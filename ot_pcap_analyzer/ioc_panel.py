@@ -454,6 +454,7 @@ class IOCPanel(QWidget):
                 border-color: #388bfd;
             }
         """)
+        self.export_json_btn.setMinimumWidth(130)
         self.export_json_btn.clicked.connect(self._export_json)
         layout.addWidget(self.export_json_btn)
 
@@ -473,6 +474,7 @@ class IOCPanel(QWidget):
                 border-color: #2ea043;
             }
         """)
+        self.export_csv_btn.setMinimumWidth(130)
         self.export_csv_btn.clicked.connect(self._export_csv)
         layout.addWidget(self.export_csv_btn)
 
