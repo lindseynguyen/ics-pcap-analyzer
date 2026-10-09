@@ -389,7 +389,7 @@ class TestThreatIntelligenceOnlineMocked:
     def test_domain_virustotal_thresholds(self, online, malicious, severity):
         online.responses["https://www.virustotal.com/api/v3/domains/"] = _vt(
             {"malicious": malicious, "harmless": 10 - malicious}, registrar="R")
-        r = online.intel.check_domain("bad.test")
+        r = online.intel.check_domain("bad-c2.net")
         assert r["is_malicious"] and r["severity"] == severity
         assert r["details"]["virustotal"]["registrar"] == "R"
 
