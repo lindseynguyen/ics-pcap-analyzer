@@ -4,6 +4,36 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [1.1.0] - 2026-10-09
+
+### Added
+- Light theme next to the dark theme, switchable from the sidebar (`Ctrl+D`);
+  the choice is remembered. A central theme engine (`gui_style.py`) keeps every
+  page, table, chart and graph consistent in both themes.
+- Redesigned security overview: KPI tiles, alerts by severity, OT protocol and
+  MITRE ATT&CK technique charts, capture facts and a high-severity alert list.
+- Scan history page: search and period filter, per-scan details (severity
+  breakdown, most frequent alerts, alerts and IOCs), comparison of two scans,
+  "Analyze again", export / import, delete one / selected / all scans,
+  automatic deletion after N days and an option to turn history off.
+- `AnalysisDatabase`: `list_sessions`, `session_overview`, `compare_sessions`,
+  `delete_sessions`, `delete_all_sessions`, `purge_older_than`, `storage_info`.
+- README screenshots and virtual-environment install instructions.
+
+### Changed
+- Modern sidebar with SVG icons and grouped navigation; cleaner top bar.
+- UI font is now a sans-serif system font (monospace only where useful).
+
+### Fixed
+- Unreadable sidebar labels and white table rows when the system palette was light.
+- Translucent colours were drawn as dark blocks (Qt reads `#RRGGBBAA` as ARGB).
+- Borders of cards were repeated around every label inside them.
+- "Top MITRE techniques" on the dashboard was always empty.
+- The history list never refreshed after an analysis, IOCs were never saved to
+  history, and deleted history stayed recoverable inside the SQLite file
+  (`secure_delete` + `VACUUM` now).
+- The capture hash for history is no longer computed by reading the whole file into memory.
+
 ## [1.0.1] - 2026-10-09
 
 ### Security
