@@ -1,0 +1,10 @@
+# Runtime dependencies
+numpy>=1.20
+pandas>=1.3
+openpyxl>=3.0
+
+# GUI (needed only for the graphical interface)
+PyQt5>=5.15
+
+# Optional: ML outlier scoring (the analyzer works without it)
+scikit-learn>=1.0

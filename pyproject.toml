@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ot-pcap-analyzer"
+version = "1.0.0"
+description = "Offline analyzer for OT/ICS network captures: protocol decoding, attack detection and MITRE ATT&CK for ICS mapping"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "OT PCAP Analyzer contributors" }]
+requires-python = ">=3.10"
+keywords = ["ics", "ot", "scada", "pcap", "modbus", "s7comm", "dnp3", "iec104", "security", "mitre-attack"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Topic :: Security",
+    "Topic :: System :: Networking :: Monitoring",
+]
+dependencies = ["numpy>=1.20", "pandas>=1.3", "openpyxl>=3.0"]
+
+[project.optional-dependencies]
+gui = ["PyQt5>=5.15"]
+ml = ["scikit-learn>=1.0"]
+dev = ["pytest>=7.0", "pytest-cov>=4.0", "scapy>=2.5", "pyflakes>=3.0"]
+
+[project.scripts]
+ot-pcap-analyzer = "ot_pcap_analyzer.main:main"
+
+[tool.setuptools]
+packages = ["ot_pcap_analyzer"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

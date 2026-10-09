@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.coverage
+htmlcov/
+venv/
+.venv/
+.env
+
+# Analyzer output (reports, exported IOCs, local databases, captures)
+*.xlsx
+iocs_*.json
+iocs_*.csv
+*.db
+*.db-shm
+*.db-wal
+logs/
+*.pcap
+*.pcapng

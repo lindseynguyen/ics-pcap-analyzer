@@ -1,0 +1,6 @@
+-r requirements.txt
+# Development / test dependencies
+pytest>=7.0
+pytest-cov>=4.0
+scapy>=2.5          # only used to generate synthetic test captures
+pyflakes>=3.0
