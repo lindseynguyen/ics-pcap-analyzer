@@ -4,6 +4,7 @@ Time limits are deliberately generous (10x the measured time) so the tests are
 stable on slow CI machines while still catching O(n^2) regressions, which made
 these captures take minutes.
 """
+import struct
 import time
 
 import pcap_factory as pf
@@ -58,6 +59,19 @@ def test_chunked_request_completes(tmp_path, analyze):
     assert tracker.is_http_complete(sid)
 
 
-def test_throughput_mixed_capture(captures, analyze):
-    a, dt = _timed(analyze, captures["attacks"])
-    assert a.packets_parsed / dt > 500, f"{a.packets_parsed / dt:.0f} packets/s"
+def _polling_capture(path, cycles):
+    b = pf._Builder()
+    for i in range(cycles):
+        tid = (i % 65535) + 1
+        b.tcp(pf.HMI, pf.PLC, 50200, 502, pf.modbus(tid, 1, 3, struct.pack(">HH", 0, 10)), dt=0.5)
+        b.tcp(pf.PLC, pf.HMI, 502, 50200, pf.modbus(tid, 1, 3, bytes([20]) + bytes(range(20))), dt=0.01)
+        b.tcp(pf.HMI, pf.WEB, 51000, 9000, b"status ok " * 40, dt=0.01)
+    return b.write(path)
+
+
+def test_analysis_time_scales_linearly(tmp_path, analyze):
+    """4x more traffic must take roughly 4x longer, not 16x (machine-independent check)."""
+    analyze(str(_polling_capture(tmp_path / "warmup.pcap", 50)))  # warm imports/caches
+    _, t1 = _timed(analyze, _polling_capture(tmp_path / "small.pcap", 500))
+    _, t4 = _timed(analyze, _polling_capture(tmp_path / "large.pcap", 2000))
+    assert t4 / t1 < 8, f"1x: {t1:.2f}s, 4x: {t4:.2f}s (ratio {t4 / t1:.1f})"
