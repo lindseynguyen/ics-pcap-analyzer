@@ -96,7 +96,8 @@ class AnalysisDatabase:
         if db_path is None:
             home = Path.home()
             db_dir = home / ".ot_pcap_analyzer"
-            db_dir.mkdir(parents=True, exist_ok=True)
+            # Analysis history contains plant topology and payloads: owner-only
+            db_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
             db_path = db_dir / "analysis.db"
 
         self.db_path = str(db_path)

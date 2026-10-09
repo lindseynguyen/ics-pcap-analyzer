@@ -6,6 +6,8 @@ Excel export sanitising helpers.
 
 import re
 
+from .utils import neutralize_formula
+
 import pandas as pd
 
 
@@ -27,6 +29,7 @@ def _excel_safe_value(value):
         value = _EXCEL_ILLEGAL_CHARS.sub("", value)
         if len(value) > _EXCEL_MAX_CELL:
             value = value[:_EXCEL_MAX_CELL] + "...[truncated]"
+        value = neutralize_formula(value)
     return value
 
 

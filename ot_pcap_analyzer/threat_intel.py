@@ -27,7 +27,34 @@ import urllib.request
 import urllib.error
 import ssl
 
-from .utils import logger
+from .utils import logger, is_internal_ip as _is_internal_ip
+
+import re as _re
+
+_HASH_RE = _re.compile(r"^(?:[0-9a-f]{32}|[0-9a-f]{40}|[0-9a-f]{64})$")
+_DOMAIN_RE = _re.compile(
+    r"^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,62}$")
+# Suffixes that only exist inside private networks (RFC 6761 / 6762 / 8375 and common practice)
+_INTERNAL_DOMAIN_SUFFIXES = (
+    ".local", ".localdomain", ".lan", ".home", ".home.arpa", ".internal", ".intranet",
+    ".corp", ".private", ".localhost", ".test", ".invalid", ".example", ".arpa",
+)
+
+
+def _is_valid_hash(value: str) -> bool:
+    return bool(_HASH_RE.match(value))
+
+
+def _is_public_domain(domain: str) -> bool:
+    """True only for a syntactically valid, public-looking FQDN.
+
+    Single-label names and private suffixes (e.g. plc01.plant.local) are never
+    sent to third-party services, and anything that is not a plain hostname
+    (paths, query strings...) is rejected before it can reach an API URL.
+    """
+    if not _DOMAIN_RE.match(domain):
+        return False
+    return not any(domain == s[1:] or domain.endswith(s) for s in _INTERNAL_DOMAIN_SUFFIXES)
 
 
 class ThreatIntelCache:
@@ -49,7 +76,8 @@ class ThreatIntelCache:
             cache_dir = home / ".ot_pcap_analyzer" / "cache"
 
         self.cache_dir = Path(cache_dir)
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        # Lookup history is private: owner-only directory
+        self.cache_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
         self.ttl = timedelta(hours=ttl_hours)
 
         # In-memory cache for current session
@@ -338,19 +366,13 @@ class LocalThreatFeed:
                 f.write(f"# Format: {feed_type},severity,description\n")
                 for key, info in data.items():
                     if info.get('type') in ['USER_DEFINED', 'USER_ADDED']:
-                        f.write(f"{key},{info.get('severity', 'HIGH')},{info.get('description', '')}\n")
+                        desc = _re.sub(r"[\r\n]+", " ", str(info.get('description', '')))
+                        sev = _re.sub(r"[\r\n,]+", " ", str(info.get('severity', 'HIGH')))
+                        f.write(f"{key},{sev},{desc}\n")
         except IOError as e:
             logger.warning(f"Failed to save {feed_type} feed: {e}")
 
 
-def _is_internal_ip(ip: str) -> bool:
-    """True for private, loopback, link-local, reserved or unparsable addresses."""
-    import ipaddress
-    try:
-        addr = ipaddress.ip_address(ip)
-    except ValueError:
-        return True
-    return not addr.is_global
 
 
 class ThreatIntelligence:
@@ -425,9 +447,11 @@ class ThreatIntelligence:
             try:
                 with open(config_path, 'r') as f:
                     keys = json.load(f)
-                    self.api_keys.update(keys)
-                    logger.info(f"Loaded API keys from {config_file}")
-            except (json.JSONDecodeError, IOError) as e:
+                if not isinstance(keys, dict):
+                    raise ValueError("expected a JSON object {service: key}")
+                self.api_keys.update({str(k).lower(): str(v) for k, v in keys.items() if v})
+                logger.info(f"Loaded API keys from {config_file}")
+            except (json.JSONDecodeError, IOError, ValueError) as e:
                 logger.warning(f"Failed to load API keys: {e}")
 
     def _rate_limit(self, service: str) -> bool:
@@ -493,6 +517,7 @@ class ThreatIntelligence:
             }
         """
         self.stats['total_lookups'] += 1
+        ip = str(ip).strip()
 
         result = {
             'ip': ip,
@@ -637,7 +662,7 @@ class ThreatIntelligence:
             Reputation data dictionary
         """
         self.stats['total_lookups'] += 1
-        hash_value = hash_value.lower()
+        hash_value = str(hash_value).strip().lower()
 
         result = {
             'hash': hash_value,
@@ -668,8 +693,8 @@ class ThreatIntelligence:
             result['sources'].append('local_feed')
             result['details']['local_feed'] = local_result
 
-        # Check VirusTotal
-        if self.enable_online and 'virustotal' in self.api_keys:
+        # Check VirusTotal (only well-formed MD5/SHA1/SHA256 values)
+        if self.enable_online and 'virustotal' in self.api_keys and _is_valid_hash(hash_value):
             vt_result = self._check_hash_virustotal(hash_value)
             if vt_result:
                 result['details']['virustotal'] = vt_result
@@ -732,7 +757,7 @@ class ThreatIntelligence:
             Reputation data dictionary
         """
         self.stats['total_lookups'] += 1
-        domain = domain.lower()
+        domain = str(domain).strip().lower().rstrip('.')
 
         result = {
             'domain': domain,
@@ -761,8 +786,9 @@ class ThreatIntelligence:
             result['sources'].append('local_feed')
             result['details']['local_feed'] = local_result
 
-        # Check VirusTotal
-        if self.enable_online and 'virustotal' in self.api_keys:
+        # Check VirusTotal. Internal host names are never sent out (they would
+        # leak plant topology) and malformed values never reach the API URL.
+        if self.enable_online and 'virustotal' in self.api_keys and _is_public_domain(domain):
             vt_result = self._check_domain_virustotal(domain)
             if vt_result:
                 result['details']['virustotal'] = vt_result

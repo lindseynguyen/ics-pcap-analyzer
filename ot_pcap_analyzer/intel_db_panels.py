@@ -10,6 +10,8 @@ Features:
 - IOC enrichment display
 """
 
+import html as _html
+import os
 from typing import Dict, List, Optional, Any
 
 try:
@@ -174,7 +176,7 @@ if HAS_PYQT5:
                 from pathlib import Path
 
                 config_dir = Path.home() / ".ot_pcap_analyzer"
-                config_dir.mkdir(parents=True, exist_ok=True)
+                config_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
                 config_file = config_dir / "api_keys.json"
 
                 keys = {}
@@ -183,8 +185,14 @@ if HAS_PYQT5:
                 if self.abuse_key_input.text().strip():
                     keys['abuseipdb'] = self.abuse_key_input.text().strip()
 
-                with open(config_file, 'w') as f:
+                # Owner-only permissions: API keys must not be readable by other local users
+                fd = os.open(config_file, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+                with os.fdopen(fd, 'w') as f:
                     json.dump(keys, f)
+                try:
+                    os.chmod(config_file, 0o600)   # also tighten a pre-existing file
+                except OSError:
+                    pass
 
                 # Reload into threat intel
                 if self.threat_intel:
@@ -296,13 +304,13 @@ if HAS_PYQT5:
             html = f"""
 <div style='font-family: monospace;'>
 <h3 style='color: {color};'>{status}</h3>
-<p><b>Severity:</b> {severity}</p>
-<p><b>Sources:</b> {', '.join(sources) if sources else 'Local feed only'}</p>
-<p><b>Checked at:</b> {result.get('checked_at', 'N/A')}</p>
+<p><b>Severity:</b> {_html.escape(str(severity))}</p>
+<p><b>Sources:</b> {_html.escape(', '.join(map(str, sources))) if sources else 'Local feed only'}</p>
+<p><b>Checked at:</b> {_html.escape(str(result.get('checked_at', 'N/A')))}</p>
 <hr/>
 <details>
 <summary>Raw Details</summary>
-<pre>{self._format_details(result.get('details', {}))}</pre>
+<pre>{_html.escape(self._format_details(result.get('details', {})))}</pre>
 </details>
 </div>
             """
@@ -713,7 +721,7 @@ if HAS_PYQT5:
             if anomaly_types:
                 html += "<h4>Top Anomaly Types:</h4><ul>"
                 for atype, count in sorted(anomaly_types.items(), key=lambda x: -x[1])[:10]:
-                    html += f"<li>{atype}: {count}</li>"
+                    html += f"<li>{_html.escape(str(atype))}: {count}</li>"
                 html += "</ul>"
 
             # Top IPs
@@ -721,7 +729,7 @@ if HAS_PYQT5:
             if top_ips:
                 html += "<h4>Top Attacking IPs:</h4><ul>"
                 for ip_data in top_ips[:5]:
-                    html += f"<li>{ip_data['ip']}: {ip_data['count']} events</li>"
+                    html += f"<li>{_html.escape(str(ip_data['ip']))}: {ip_data['count']} events</li>"
                 html += "</ul>"
 
             self.trends_text.setHtml(html)

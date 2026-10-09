@@ -13,11 +13,14 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import Qt, QSize, QUrl
 from PyQt5.QtGui import QFont, QColor, QCursor, QDesktopServices
 
+import html as _html
+import urllib.parse
 from datetime import datetime
 from typing import Dict, List, Optional
 
 from .ioc_collector import IOCCollector
 from .ioc_models import IOCRecord
+from .utils import is_internal_ip as _is_internal_ip
 
 
 # Color constants - SOC Theme (High Contrast)
@@ -948,34 +951,46 @@ class IOCPanel(QWidget):
             values.append(item.text() if item else "")
         self._copy_to_clipboard("\t".join(values))
 
+    def _external_lookup_allowed(self, ioc) -> bool:
+        """Internal / private addresses are never sent to third-party sites."""
+        if ioc.ioc_type == "IP" and _is_internal_ip(str(ioc.value)):
+            QMessageBox.information(
+                self, "Lookup skipped",
+                "This is a private / internal address. It has no public reputation "
+                "and is not sent to external services.")
+            return False
+        return True
+
     def _lookup_virustotal(self, ioc):
         """Open VirusTotal lookup for IOC."""
+        if not self._external_lookup_allowed(ioc):
+            return
+        value = urllib.parse.quote(str(ioc.value), safe="")
         base_url = "https://www.virustotal.com/gui/"
         if ioc.ioc_type == "IP":
-            url = f"{base_url}ip-address/{ioc.value}"
+            url = f"{base_url}ip-address/{value}"
         elif ioc.ioc_type == "HASH":
-            url = f"{base_url}file/{ioc.value}"
+            url = f"{base_url}file/{value}"
         elif ioc.ioc_type == "DOMAIN":
-            url = f"{base_url}domain/{ioc.value}"
+            url = f"{base_url}domain/{value}"
         elif ioc.ioc_type == "URL":
-            import urllib.parse
-            encoded = urllib.parse.quote_plus(ioc.value)
+            encoded = urllib.parse.quote_plus(str(ioc.value))
             url = f"{base_url}url/{encoded}"
         else:
-            url = f"{base_url}search/{ioc.value}"
+            url = f"{base_url}search/{value}"
 
         QDesktopServices.openUrl(QUrl(url))
 
     def _lookup_abuseipdb(self, ioc):
         """Open AbuseIPDB lookup for IP."""
-        if ioc.ioc_type == "IP":
-            url = f"https://www.abuseipdb.com/check/{ioc.value}"
+        if ioc.ioc_type == "IP" and self._external_lookup_allowed(ioc):
+            url = f"https://www.abuseipdb.com/check/{urllib.parse.quote(str(ioc.value), safe='')}"
             QDesktopServices.openUrl(QUrl(url))
 
     def _lookup_shodan(self, ioc):
         """Open Shodan lookup for IP."""
-        if ioc.ioc_type == "IP":
-            url = f"https://www.shodan.io/host/{ioc.value}"
+        if ioc.ioc_type == "IP" and self._external_lookup_allowed(ioc):
+            url = f"https://www.shodan.io/host/{urllib.parse.quote(str(ioc.value), safe='')}"
             QDesktopServices.openUrl(QUrl(url))
 
     def _lookup_mitre(self, ioc):
@@ -1007,15 +1022,15 @@ class IOCPanel(QWidget):
         # Header
         parts.append(f"""
         <div class='header'>
-            {IOC_TYPE_ICONS.get(ioc.ioc_type, '•')} {ioc.ioc_type}: {ioc.value[:80]}
+            {IOC_TYPE_ICONS.get(ioc.ioc_type, '•')} {_html.escape(str(ioc.ioc_type))}: {_html.escape(str(ioc.value)[:80])}
             <span class='badge' style='background:{sev_bg}; color:{sev_text}; margin-left:8px;'>
-                {ioc.severity}
+                {_html.escape(str(ioc.severity))}
             </span>
         </div>
         """)
 
         # Description
-        desc = ioc.description
+        desc = _html.escape(str(ioc.description or ''))
         if desc:
             parts.append(f"<div class='field'><span class='value'>{desc}</span></div>")
 
@@ -1037,7 +1052,7 @@ class IOCPanel(QWidget):
 
         # Context
         if ioc.context:
-            parts.append(f"<div class='field'><span class='label'>Context:</span> <span class='value'>{ioc.context}</span></div>")
+            parts.append(f"<div class='field'><span class='label'>Context:</span> <span class='value'>{_html.escape(str(ioc.context))}</span></div>")
 
         # Risk score (for IPs)
         if ioc.risk_score > 0:
@@ -1045,19 +1060,19 @@ class IOCPanel(QWidget):
 
         # Associated IPs
         if ioc.associated_ips:
-            ips_str = ", ".join(ioc.associated_ips[:10])
+            ips_str = _html.escape(", ".join(map(str, ioc.associated_ips[:10])))
             if len(ioc.associated_ips) > 10:
                 ips_str += f" +{len(ioc.associated_ips)-10} more"
             parts.append(f"<div class='field'><span class='label'>Associated IPs:</span> <span class='value'>{ips_str}</span></div>")
 
         # MITRE Techniques
         if ioc.techniques:
-            tech_str = ", ".join(ioc.techniques[:10])
+            tech_str = _html.escape(", ".join(map(str, ioc.techniques[:10])))
             parts.append(f"<div class='field'><span class='label'>MITRE Techniques:</span> <span class='value'>{tech_str}</span></div>")
 
         # Payload preview (for hashes)
         if ioc.payload_preview:
-            preview = ioc.payload_preview[:200]
+            preview = _html.escape(str(ioc.payload_preview)[:200])
             parts.append(f"<div class='field'><span class='label'>Payload Preview:</span><br/><code style='font-size:11px; color:#58a6ff; background:#3d444d; padding:4px 8px; border-radius:4px;'>{preview}</code></div>")
 
         return "".join(parts)

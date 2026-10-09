@@ -2,6 +2,8 @@
 OT PCAP Analyzer - GUI views
 (asset, dashboard, anomaly, OT event and MITRE views)
 """
+import html as _html
+
 try:
     from PyQt5.QtWidgets import (
         QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
@@ -963,11 +965,11 @@ if HAS_PYQT5:
                 .value {{ color: #f0f6fc; font-weight: 500; }}
             </style>
             <table>
-                <tr><td class='label'>◎ Capture File</td><td class='value'>{summary.get('CAPTURE_FILE', '-')}</td></tr>
-                <tr><td class='label'>▦ File Size</td><td class='value'>{summary.get('CAPTURE_SIZE', '-')}</td></tr>
-                <tr><td class='label'>⏱ Duration</td><td class='value'>{summary.get('DURATION_STR', '-')}</td></tr>
-                <tr><td class='label'>◷ Time Range</td><td class='value'>{summary.get('TIME_START', '')} - {summary.get('TIME_END', '')}</td></tr>
-                <tr><td class='label'>⚡ MITRE Techniques</td><td class='value'>{summary.get('MITRE_TECHNIQUES', '-')}</td></tr>
+                <tr><td class='label'>◎ Capture File</td><td class='value'>{_html.escape(str(summary.get('CAPTURE_FILE', '-')))}</td></tr>
+                <tr><td class='label'>▦ File Size</td><td class='value'>{_html.escape(str(summary.get('CAPTURE_SIZE', '-')))}</td></tr>
+                <tr><td class='label'>⏱ Duration</td><td class='value'>{_html.escape(str(summary.get('DURATION_STR', '-')))}</td></tr>
+                <tr><td class='label'>◷ Time Range</td><td class='value'>{_html.escape(str(summary.get('TIME_START', '')))} - {_html.escape(str(summary.get('TIME_END', '')))}</td></tr>
+                <tr><td class='label'>⚡ MITRE Techniques</td><td class='value'>{_html.escape(str(summary.get('MITRE_TECHNIQUES', '-')))}</td></tr>
             </table>
             """
             self.summary_text.setHtml(html)
@@ -1395,16 +1397,16 @@ if HAS_PYQT5:
             msg.setIcon(QMessageBox.Information)
 
             details = f"""
-<b>Type:</b> {anomaly.anomaly_type}<br>
-<b>Severity:</b> <span style="color: {self.SEVERITY_ICONS.get(anomaly.severity.upper(), ('', '#ffffff'))[1]}">{anomaly.severity}</span><br>
-<b>Timestamp:</b> {getattr(anomaly, 'timestamp', 'N/A')}<br>
-<b>Source:</b> {anomaly.src_ip}<br>
-<b>Destination:</b> {anomaly.dst_ip}<br>
-<b>Protocol:</b> {getattr(anomaly, 'protocol', 'N/A')}<br><br>
-<b>Description:</b><br>{anomaly.description or 'N/A'}<br><br>
-<b>MITRE Techniques:</b> {', '.join(getattr(anomaly, 'mitre_techniques', []))}<br>
-<b>Confidence:</b> {getattr(anomaly, 'confidence', 'N/A')}<br><br>
-<b>Recommendation:</b><br>{getattr(anomaly, 'recommendation', 'N/A')}
+<b>Type:</b> {_html.escape(str(anomaly.anomaly_type))}<br>
+<b>Severity:</b> <span style="color: {self.SEVERITY_ICONS.get(anomaly.severity.upper(), ('', '#ffffff'))[1]}">{_html.escape(str(anomaly.severity))}</span><br>
+<b>Timestamp:</b> {_html.escape(str(getattr(anomaly, 'timestamp', 'N/A')))}<br>
+<b>Source:</b> {_html.escape(str(anomaly.src_ip))}<br>
+<b>Destination:</b> {_html.escape(str(anomaly.dst_ip))}<br>
+<b>Protocol:</b> {_html.escape(str(getattr(anomaly, 'protocol', 'N/A')))}<br><br>
+<b>Description:</b><br>{_html.escape(str(anomaly.description or 'N/A'))}<br><br>
+<b>MITRE Techniques:</b> {_html.escape(str(', '.join(map(str, getattr(anomaly, 'mitre_techniques', []) or []))))}<br>
+<b>Confidence:</b> {_html.escape(str(getattr(anomaly, 'confidence', 'N/A')))}<br><br>
+<b>Recommendation:</b><br>{_html.escape(str(getattr(anomaly, 'recommendation', 'N/A')))}
 """
             msg.setTextFormat(Qt.RichText)
             msg.setText(details)
@@ -1838,16 +1840,16 @@ if HAS_PYQT5:
             msg.setIcon(QMessageBox.Information)
 
             details = f"""
-<b>Protocol:</b> {self._get_proto_str(event)}<br>
-<b>Timestamp:</b> {getattr(event, 'timestamp', 'N/A')}<br>
-<b>Source:</b> {getattr(event, 'src_ip', 'N/A')}:{getattr(event, 'src_port', 'N/A')}<br>
-<b>Destination:</b> {getattr(event, 'dst_ip', 'N/A')}:{getattr(event, 'dst_port', 'N/A')}<br><br>
-<b>Function Code:</b> {getattr(event, 'function_code', 'N/A')}<br>
-<b>Operation:</b> {getattr(event, 'operation', 'N/A')}<br>
-<b>Risk Level:</b> {getattr(event, 'risk_level', 'N/A')}<br><br>
-<b>Registers/Address:</b> {getattr(event, 'start_address', 'N/A')} - {getattr(event, 'quantity', 'N/A')}<br>
-<b>Payload Size:</b> {getattr(event, 'payload_size', 'N/A')} bytes<br><br>
-<b>MITRE Techniques:</b> {', '.join(str(m) for m in getattr(event, 'mitre_techniques', []) or [])}
+<b>Protocol:</b> {_html.escape(str(self._get_proto_str(event)))}<br>
+<b>Timestamp:</b> {_html.escape(str(getattr(event, 'timestamp', 'N/A')))}<br>
+<b>Source:</b> {_html.escape(str(getattr(event, 'src_ip', 'N/A')))}:{_html.escape(str(getattr(event, 'src_port', 'N/A')))}<br>
+<b>Destination:</b> {_html.escape(str(getattr(event, 'dst_ip', 'N/A')))}:{_html.escape(str(getattr(event, 'dst_port', 'N/A')))}<br><br>
+<b>Function Code:</b> {_html.escape(str(getattr(event, 'function_code', 'N/A')))}<br>
+<b>Operation:</b> {_html.escape(str(getattr(event, 'operation', 'N/A')))}<br>
+<b>Risk Level:</b> {_html.escape(str(getattr(event, 'risk_level', 'N/A')))}<br><br>
+<b>Registers/Address:</b> {_html.escape(str(getattr(event, 'start_address', 'N/A')))} - {_html.escape(str(getattr(event, 'quantity', 'N/A')))}<br>
+<b>Payload Size:</b> {_html.escape(str(getattr(event, 'payload_size', 'N/A')))} bytes<br><br>
+<b>MITRE Techniques:</b> {_html.escape(str(', '.join(str(m) for m in getattr(event, 'mitre_techniques', []) or [])))}
 """
             msg.setTextFormat(Qt.RichText)
             msg.setText(details)
@@ -2367,10 +2369,10 @@ if HAS_PYQT5:
                         sev = info.get('severity', '')
                         sev_color = {"CRITICAL": "#f85149", "HIGH": "#db6d28", "MEDIUM": "#d29922"}.get(sev, "#8b949e")
                         html += f"""<tr>
-                            <td style='color:{sev_color}; font-weight:600; padding: 2px 6px;'>{sev}</td>
-                            <td style='padding: 2px 6px;'>{info.get('type', '')}</td>
-                            <td style='padding: 2px 6px;'>{info.get('src_ip', '')} -> {info.get('dst_ip', '')}</td>
-                            <td style='padding: 2px 6px;'>{info.get('description', '')}</td>
+                            <td style='color:{sev_color}; font-weight:600; padding: 2px 6px;'>{_html.escape(str(sev))}</td>
+                            <td style='padding: 2px 6px;'>{_html.escape(str(info.get('type', '')))}</td>
+                            <td style='padding: 2px 6px;'>{_html.escape(str(info.get('src_ip', '')))} -&gt; {_html.escape(str(info.get('dst_ip', '')))}</td>
+                            <td style='padding: 2px 6px;'>{_html.escape(str(info.get('description', '')))}</td>
                         </tr>"""
                     if len(anomaly_list) > 10:
                         html += f"<tr><td colspan='4' style='color:#6e7681; padding: 4px 6px;'>... and {len(anomaly_list) - 10} more</td></tr>"

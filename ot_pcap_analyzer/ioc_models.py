@@ -63,7 +63,11 @@ class IOCRecord:
         }
 
     def to_csv_row(self) -> List[str]:
-        """Convert IOCRecord to CSV row (list of strings)."""
+        """Convert IOCRecord to CSV row (list of strings), safe to open in a spreadsheet."""
+        from .utils import neutralize_formula
+        return [neutralize_formula(v) for v in self._raw_csv_row()]
+
+    def _raw_csv_row(self) -> List[str]:
         return [
             self.ioc_type,
             self.value,

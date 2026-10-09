@@ -219,3 +219,35 @@ def normalize_timestamp(ts: float) -> Optional[float]:
         return None
 
     return ts
+
+
+def is_internal_ip(ip: str) -> bool:
+    """True for private, loopback, link-local, reserved or unparsable addresses.
+
+    Such addresses are never sent to third-party services: it would leak plant
+    topology and they have no public reputation anyway.
+    """
+    import ipaddress
+    try:
+        addr = ipaddress.ip_address(str(ip).strip())
+    except ValueError:
+        return True
+    return not addr.is_global
+
+
+# Cells starting with these characters are interpreted as formulas by Excel /
+# LibreOffice. Captured traffic is attacker-controlled (URLs, user agents, DNS
+# names...), so such values are prefixed with a quote to stay plain text
+# (CSV/formula injection, OWASP).
+_PLAIN_NUMBER_RE = re.compile(r"^[+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$")
+_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r", "\uff1d", "\uff0b", "\uff0d", "\uff20")
+
+
+def neutralize_formula(value):
+    """Return value unchanged unless it is a string a spreadsheet would evaluate."""
+    if isinstance(value, str) and len(value) > 1 and value.startswith(_FORMULA_PREFIXES):
+        # Plain signed numbers ("-12.5") are harmless and stay as they are.
+        if _PLAIN_NUMBER_RE.match(value):
+            return value
+        return "'" + value
+    return value
