@@ -146,6 +146,10 @@ every protocol decoder, that a realistic benign capture produces **no alerts**,
 that each attack scenario is detected, and that the CLI, reports, IOC export,
 history database and GUI work end to end.
 
+## Related resources
+
+If you analyze OT captures, you probably also audit the systems behind them. The free **[OT/ICS Security Quick Audit Checklist 2026](https://techsavant013.gumroad.com/l/ot-ics-quick-audit-checklist?utm_source=github&utm_medium=readme)** (pay what you want) gives you 35 evidence-based checks across 9 domains, mapped to IEC 62443. For full assessments, see the **[OT/ICS Cybersecurity Audit & Risk Assessment Toolkit 2026](https://techsavant013.gumroad.com/l/ot-security-toolkit?utm_source=github&utm_medium=readme)**.
+
 ## Contributing
 
 Contributions are welcome — bug reports, new protocol parsers, detection rules,
