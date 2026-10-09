@@ -139,20 +139,22 @@ def test_main_launches_gui(monkeypatch, no_gui, argv):
 
 def test_main_cli_passes_arguments(monkeypatch, no_gui):
     seen = []
-    monkeypatch.setattr(m, "run_cli", lambda *a: seen.append(a))
+    monkeypatch.setattr(m, "run_cli", lambda *a, **k: seen.append((a, k)))
     monkeypatch.setattr(sys, "argv", ["prog", "--cli", "cap.pcap", "-o", "r.xlsx", "-m", "100",
-                                      "--advanced", "--gui"])
+                                      "--advanced", "--gui", "--rules", "a.yml", "--rules", "dir",
+                                      "--no-behavior"])
     m.main()
-    assert seen == [("cap.pcap", "r.xlsx", 100, True)]
+    assert seen == [(("cap.pcap", "r.xlsx", 100, True),
+                     {"rule_paths": ["a.yml", "dir"], "behavior": False})]
     assert no_gui == []  # --cli wins over --gui
 
 
 def test_main_cli_defaults(monkeypatch, no_gui):
     seen = []
-    monkeypatch.setattr(m, "run_cli", lambda *a: seen.append(a))
+    monkeypatch.setattr(m, "run_cli", lambda *a, **k: seen.append((a, k)))
     monkeypatch.setattr(sys, "argv", ["prog", "--cli", "cap.pcap"])
     m.main()
-    assert seen == [("cap.pcap", None, None, False)]
+    assert seen == [(("cap.pcap", None, None, False), {"rule_paths": [], "behavior": True})]
 
 
 def test_main_cli_end_to_end(monkeypatch, captures, tmp_path, no_gui, capsys):
