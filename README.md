@@ -51,6 +51,13 @@ Ethernet, VLAN/QinQ, Linux cooked (SLL/SLL2), raw IP, IPv4 and IPv6.
   data exfiltration, DNS tunnelling, ARP spoofing, post-exploitation shell activity.
 - **Web (HMI/SCADA front-ends):** SQL/command injection, XSS, path traversal,
   SSRF, web shells and dangerous uploads, scanners, directory brute force.
+- **Behaviour profiling:** the first part of a capture is learnt as "normal", then the
+  rest is checked for new masters / publishers talking to OT devices, function codes
+  never used before, polling that stops or turns into a storm, and written values
+  far outside the learnt range.
+- **Your own rules:** YAML/JSON detection rules on OT events (protocol, operation,
+  addresses/subnets, function codes, target regex, value limits, thresholds) — see
+  [examples/rules](examples/rules/README.md).
 
 **Analysis & reporting**
 
@@ -105,7 +112,16 @@ python -m ot_pcap_analyzer --cli capture.pcap --advanced
 
 # Limit the number of packets
 python -m ot_pcap_analyzer --cli capture.pcap -m 100000
+
+# Add your own detection rules (file or folder, repeatable)
+python -m ot_pcap_analyzer --cli capture.pcap --rules examples/rules/example_rules.yml
+
+# Turn behaviour profiling off
+python -m ot_pcap_analyzer --cli capture.pcap --no-behavior
 ```
+
+Rules placed in `~/.ot_pcap_analyzer/rules/` are loaded automatically, also by the GUI.
+YAML rules need `pip install pyyaml`; JSON rules work without it.
 
 After `pip install -e .` the same commands are available as `ot-pcap-analyzer`.
 
@@ -158,6 +174,9 @@ ot_pcap_analyzer/
 ├── parsers.py               PCAP/PCAPNG readers, protocol parsers, HTTP decoding
 ├── ot_stream.py             OT TCP stream reassembly (PDU framing)
 ├── detectors.py             Rule-based and ML detectors
+├── detection/behavior.py    Behaviour profiling (new talkers, polling, value ranges)
+├── detection/rules_engine.py  User-defined YAML/JSON detection rules
+├── protocols/base.py        Shared helpers and event vocabulary for protocol decoders
 ├── baseline.py              Baseline learning / whitelist rules
 ├── ot_malware_signatures.py ICS malware behavioural signatures
 ├── advanced_threat_detector.py  Kill-chain threat scoring

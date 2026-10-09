@@ -4,6 +4,24 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [1.2.0] - 2026-10-09
+
+### Added
+- Behaviour profiling (`detection/behavior.py`), on by default: learns the first
+  30 % of a capture and reports `OT_NEW_MASTER`, `OT_NEW_DEVICE`, `OT_NEW_FUNCTION`,
+  `OT_POLLING_DEVIATION` (polling stopped / storm) and `OT_VALUE_OUT_OF_RANGE`.
+  Disable with `--no-behavior` or `AnalyzerConfig(enable_behavior_profiling=False)`.
+- Custom detection rules (`detection/rules_engine.py`): YAML/JSON rules matching
+  protocol, operation, IPs/CIDRs/MACs (with negation), ports, function codes,
+  target regex, value limits and `details` fields, with thresholds, grouping and
+  cooldown. Loaded from `--rules PATH` (repeatable) and `~/.ot_pcap_analyzer/rules`.
+  Ten commented examples in `examples/rules/`.
+- `OTEvent.details`: structured, protocol-independent facts (`op`, `target`,
+  `value`, `is_request`…) for decoders and rules (`protocols/base.py`).
+
+### Fixed
+- The installed package now includes its sub-packages.
+
 ## [1.1.0] - 2026-10-09
 
 ### Added

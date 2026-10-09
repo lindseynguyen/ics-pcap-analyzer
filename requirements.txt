@@ -8,3 +8,6 @@ PyQt5>=5.15
 
 # Optional: ML outlier scoring (the analyzer works without it)
 scikit-learn>=1.0
+
+# Optional: YAML custom detection rules (JSON rules work without it)
+PyYAML>=6.0
