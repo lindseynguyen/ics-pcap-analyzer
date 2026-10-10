@@ -10,7 +10,22 @@ permissions:
   contents: read
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Install ruff
+        run: python -m pip install --upgrade pip ruff
+      - name: Lint (ruff, config in pyproject.toml)
+        run: ruff check --output-format=github .
+
   test:
+    needs: lint
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -31,8 +46,9 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements-dev.txt
-      - name: Lint (pyflakes, errors only)
-        run: |
-          python -m pyflakes ot_pcap_analyzer tests | grep -E "undefined name|syntax error|invalid syntax" && exit 1 || true
       - name: Run tests
         run: python -m pytest --cov=ot_pcap_analyzer --cov-report=term
+      - name: Smoke-test the CLI on the sample captures
+        run: |
+          python -m ot_pcap_analyzer --cli samples/benign_plant.pcap -o benign.xlsx
+          python -m ot_pcap_analyzer --cli samples/attack_scenarios.pcap --advanced -o attacks.xlsx

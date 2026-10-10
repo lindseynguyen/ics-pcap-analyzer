@@ -16,14 +16,10 @@ Features:
 """
 
 import re
-import base64
-import hashlib
-import zlib
-from typing import Dict, List, Tuple, Optional, Any
+from typing import Dict, List, Tuple, Optional
 from collections import defaultdict
-from datetime import datetime
 
-from .utils import cached_regex, entropy, logger
+from .utils import cached_regex, entropy
 
 
 # =============================================================================

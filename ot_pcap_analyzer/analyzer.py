@@ -1042,7 +1042,7 @@ class OTAnalyzer:
 
         # Safety check: If no target IPs found, infer from available data
         if not target_ips and source_ips:
-            logger.warning(f"[CHAIN BUILD] No target_ips found, inferring from context")
+            logger.warning("[CHAIN BUILD] No target_ips found, inferring from context")
             # Fallback 1: Use any IPs from assets that communicated with source_ips
             for src in source_ips:
                 # Check conversation pairs
@@ -1055,7 +1055,7 @@ class OTAnalyzer:
 
             # Fallback 2: If still empty, use source_ips as targets (internal lateral movement)
             if not target_ips:
-                logger.warning(f"[CHAIN BUILD] Using source_ips as target_ips (lateral movement scenario)")
+                logger.warning("[CHAIN BUILD] Using source_ips as target_ips (lateral movement scenario)")
                 target_ips = source_ips.copy()
 
         # OT impact assessment

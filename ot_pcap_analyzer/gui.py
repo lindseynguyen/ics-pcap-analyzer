@@ -33,7 +33,7 @@ if HAS_PYQT5:
     from . import gui_style
     from .models import AnalyzerConfig
     from .analyzer import OTAnalyzer
-    from .utils import timestamp, utc_str, logger
+    from .utils import timestamp, logger
 
     # Try to import incident_tab, fallback if not available
     try:

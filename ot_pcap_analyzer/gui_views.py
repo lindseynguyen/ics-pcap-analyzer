@@ -2214,7 +2214,7 @@ if HAS_PYQT5:
                 tactic_header = QHBoxLayout()
                 if detected_in_tactic:
                     tactic_icon = QLabel("◉")
-                    tactic_icon.setStyleSheet(f"font-size: 14px; color: #69db7c;")
+                    tactic_icon.setStyleSheet("font-size: 14px; color: #69db7c;")
                 else:
                     tactic_icon = QLabel("○")
                     tactic_icon.setStyleSheet("font-size: 14px; color: #8b949e;")
@@ -2222,7 +2222,7 @@ if HAS_PYQT5:
 
                 tactic_label = QLabel(tactic_name)
                 if detected_in_tactic:
-                    tactic_label.setStyleSheet(f"font-size: 14px; font-weight: 700; color: #f0f6fc;")
+                    tactic_label.setStyleSheet("font-size: 14px; font-weight: 700; color: #f0f6fc;")
                 else:
                     tactic_label.setStyleSheet("font-size: 14px; font-weight: 600; color: #e6edf3;")
                 tactic_header.addWidget(tactic_label)

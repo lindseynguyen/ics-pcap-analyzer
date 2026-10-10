@@ -20,8 +20,7 @@ import hashlib
 import time
 import os
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Any, Tuple
-from collections import defaultdict
+from typing import Dict, Optional, Any, Tuple
 from pathlib import Path
 import urllib.request
 import urllib.error

@@ -5,7 +5,6 @@ import re
 import subprocess
 import sys
 
-import pytest
 from openpyxl import load_workbook
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

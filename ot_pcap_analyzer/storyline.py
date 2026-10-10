@@ -13,8 +13,7 @@ This module does NOT change the application's core logic.
 It only adds a new optional feature (default OFF).
 """
 
-from dataclasses import dataclass, field
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional
 from datetime import datetime
 import hashlib
 
@@ -1013,7 +1012,7 @@ class AttackStorylineGenerator:
             timeline_en.append("-" * 70)
             timeline_en.append("PROGRESSION ANALYSIS:")
             timeline_en.append(f"The attacker progressed through {len(chain.phases)} distinct phases,")
-            timeline_en.append(f"indicating a sophisticated, multi-stage attack campaign.")
+            timeline_en.append("indicating a sophisticated, multi-stage attack campaign.")
 
         return "\n".join(timeline_en)
 

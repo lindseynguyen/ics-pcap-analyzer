@@ -4,6 +4,21 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- `samples/`: three ready-to-use synthetic captures (benign plant, every OT protocol,
+  multi-stage attack) with expected results, plus `scripts/generate_samples.py`.
+  `tests/test_samples.py` keeps them in sync with the generator and checks the
+  documented results.
+- Animated GUI demo `docs/demo.gif`, recorded by `scripts/make_demo_gif.py`.
+- README quick start using the samples, extra badges and an OT/ICS audit checklist link.
+
+### Changed
+- CI: separate lint job with ruff (pyflakes rules, config in `pyproject.toml`) instead of
+  grepping pyflakes output; tests now also smoke-test the CLI on the sample captures.
+- Removed unused imports, duplicate imports and empty f-strings across the package.
+
 ## [1.2.0] - 2026-10-09
 
 ### Added

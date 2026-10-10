@@ -8,7 +8,7 @@ import json
 import csv
 import re
 from datetime import datetime
-from typing import Dict, List, Tuple, Set, Optional
+from typing import Dict, List, Tuple, Optional
 from collections import defaultdict
 
 from .ioc_models import IOCRecord

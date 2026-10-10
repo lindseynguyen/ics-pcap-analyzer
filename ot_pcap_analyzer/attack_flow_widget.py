@@ -14,29 +14,26 @@ Features:
 """
 
 from PyQt5.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTextEdit,
-    QGroupBox, QFrame, QScrollArea, QSplitter, QPushButton, QTableWidget,
-    QTableWidgetItem, QHeaderView, QToolBar, QAction, QComboBox,
-    QGraphicsView, QGraphicsScene, QGraphicsEllipseItem, QGraphicsLineItem,
-    QGraphicsTextItem, QGraphicsRectItem, QGraphicsDropShadowEffect,
-    QGraphicsPathItem, QToolButton, QMenu, QMessageBox, QFileDialog,
-    QGraphicsProxyWidget, QSpacerItem, QSizePolicy, QToolTip,
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QGroupBox, QFrame, QScrollArea, QSplitter, QPushButton, QComboBox,
+    QGraphicsView, QGraphicsScene, QGraphicsEllipseItem, QGraphicsTextItem, QGraphicsRectItem, QGraphicsDropShadowEffect,
+    QGraphicsPathItem, QMessageBox, QFileDialog,
+    QToolTip,
     QGraphicsPolygonItem
 )
-from PyQt5.QtCore import Qt, pyqtSignal, QRectF, QPointF, QLineF, QTimer
+from PyQt5.QtCore import Qt, pyqtSignal, QPointF
 from PyQt5.QtGui import (
     QFont, QColor, QPen, QBrush, QPainter, QPainterPath,
-    QLinearGradient, QRadialGradient, QPixmap, QCursor, QPolygonF
+    QPixmap, QCursor, QPolygonF
 )
 
 from .gui_style import themed
 
 from datetime import datetime
-from typing import List, Dict, Optional, Set, Tuple
+from typing import Dict, Optional
 from collections import defaultdict
 import math
 
-from .models import AttackChain, AttackPhase, AttackStoryline, SecurityAnomaly
+from .models import AttackChain, AttackStoryline
 from .utils import normalize_timestamp
 
 
@@ -515,13 +512,13 @@ class StatisticsPanel(QFrame):
     def _create_stat_box(self, label: str, value: str, color: str) -> QFrame:
         """Create a statistics box"""
         frame = QFrame()
-        frame.setStyleSheet(f"""
-            QFrame {{
+        frame.setStyleSheet("""
+            QFrame {
                 background-color: #21262d;
                 border: 1px solid #30363d;
                 border-radius: 6px;
                 padding: 8px;
-            }}
+            }
         """)
 
         layout = QVBoxLayout(frame)
@@ -530,7 +527,7 @@ class StatisticsPanel(QFrame):
 
         # Label
         lbl = QLabel(label)
-        lbl.setStyleSheet(f"color: #8b949e; font-size: 10px; font-weight: 600;")
+        lbl.setStyleSheet("color: #8b949e; font-size: 10px; font-weight: 600;")
         lbl.setAlignment(Qt.AlignCenter)
         layout.addWidget(lbl)
 

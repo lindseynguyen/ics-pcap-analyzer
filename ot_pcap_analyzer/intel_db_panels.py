@@ -12,7 +12,7 @@ Features:
 
 import html as _html
 import os
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional
 
 try:
     from PyQt5.QtWidgets import (
