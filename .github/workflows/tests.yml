@@ -47,7 +47,14 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements-dev.txt
       - name: Run tests
-        run: python -m pytest --cov=ot_pcap_analyzer --cov-report=term
+        run: |
+          set -o pipefail
+          python -m pytest --cov=ot_pcap_analyzer --cov-report=term -rfE 2>&1 | tee pytest.log || {
+            # surface failing tests as annotations so they show up in the PR checks
+            grep -E "^(FAILED|ERROR) " pytest.log | head -20 | sed 's/^/::error title=pytest::/'
+            tail -60 pytest.log | grep -E "Error|assert" | head -20 | sed 's/^/::error title=detail::/'
+            exit 1
+          }
       - name: Smoke-test the CLI on the sample captures
         run: |
           python -m ot_pcap_analyzer --cli samples/benign_plant.pcap -o benign.xlsx
