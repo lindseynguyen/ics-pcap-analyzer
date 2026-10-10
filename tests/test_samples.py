@@ -1,5 +1,4 @@
 """The committed sample captures stay in sync with the factory and analyse as documented."""
-import hashlib
 from pathlib import Path
 
 import pytest
@@ -16,8 +15,11 @@ BUILDERS = {
 }
 
 
-def _sha(path):
-    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+def _frames(path):
+    # Byte-level hashes are not portable: scapy fills in missing destination MACs
+    # from the host it runs on. Packet count and IP-layer content are.
+    from scapy.all import IP, rdpcap
+    return [(len(p), bytes(p[IP]) if IP in p else b"") for p in rdpcap(str(path))]
 
 
 @pytest.mark.parametrize("name", sorted(BUILDERS))
@@ -25,7 +27,7 @@ def test_sample_matches_factory(name, tmp_path):
     committed = SAMPLES / name
     assert committed.exists(), f"missing samples/{name} - run scripts/generate_samples.py"
     fresh = BUILDERS[name](tmp_path / name)
-    assert _sha(committed) == _sha(fresh), (
+    assert _frames(committed) == _frames(fresh), (
         f"samples/{name} is out of date - run scripts/generate_samples.py")
 
 

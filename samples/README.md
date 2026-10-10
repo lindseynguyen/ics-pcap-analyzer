@@ -26,8 +26,8 @@ pip install -r requirements-dev.txt
 python scripts/generate_samples.py
 ```
 
-Generation is deterministic: the same code produces byte-identical files, and the
-test suite fails if the committed samples drift from the factory.
+Generation is deterministic at the IP layer (Ethernet MACs scapy fills in can
+vary by host); the test suite fails if the committed samples drift from the factory.
 
 ## Contributing real captures
 
