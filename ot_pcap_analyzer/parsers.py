@@ -288,18 +288,15 @@ from typing import Iterator, Dict, Tuple, Optional
 from .constants import (
     OTProtocol, MODBUS_FUNCTIONS, S7_FUNCTIONS,
     DNP3_FUNCTIONS, CIP_SERVICES, IEC104_ASDU_TYPES,
-    DNS_QUERY_TYPES, HTTP_METHODS, HTTP_SUSPICIOUS_PATTERNS,
-    DNS_TUNNELING_INDICATORS
+    DNS_QUERY_TYPES, HTTP_METHODS
 )
 from .models import PacketRecord, OTEvent
 
-from .utils import cached_regex, entropy, logger, ip4_to_str, mac_to_str
+from .utils import cached_regex, entropy, logger, ip4_to_str, mac_to_str  # noqa: F811 - utils versions replace the bootstrap helpers above
 
 # === Enhanced HTTP/WebShell Analysis ===
 from .http_stream_analysis import (
-    EnhancedHTTPStreamAnalyzer,
-    analyze_http_stream_enhanced,
-    get_webshell_report
+    EnhancedHTTPStreamAnalyzer
 )
 
 
@@ -1087,7 +1084,7 @@ class ProtocolParser:
                     function_name=f"{func_name} - {desc}",
                     operation_type="CONTROL", risk_level=risk,
                     raw_data=payload[:min(64, len(payload))],
-                    notes=f"U-Frame",
+                    notes="U-Frame",
                     mitre_techniques=mitre,
                     threat_score=0.6 if risk == "HIGH" else 0.3,
                     payload_entropy=0.0, sequence_id=seq_id,
@@ -1934,13 +1931,7 @@ class ProtocolParser:
 # 4. Payload Extraction - Extract suspicious content with decode explanation
 # =============================================================================
 
-import zlib
-import base64
-import binascii
-import hashlib
-import re
 from urllib.parse import unquote
-from dataclasses import dataclass, field
 from typing import List
 
 # Try to import brotli (optional)

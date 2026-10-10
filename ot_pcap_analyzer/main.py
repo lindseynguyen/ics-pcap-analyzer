@@ -101,7 +101,7 @@ def run_gui():
     try:
         # Check PyQt5 availability
         try:
-            from PyQt5.QtWidgets import QApplication
+            from PyQt5.QtWidgets import QApplication  # noqa: F401 - availability check
         except ImportError:
             print("Error: PyQt5 is not installed.")
             print("Please install it with: pip install PyQt5")

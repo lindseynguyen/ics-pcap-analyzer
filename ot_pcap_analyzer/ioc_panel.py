@@ -11,12 +11,12 @@ from PyQt5.QtWidgets import (
     QAbstractItemView, QMenu, QApplication, QMessageBox
 )
 from PyQt5.QtCore import Qt, QSize, QUrl
-from PyQt5.QtGui import QFont, QColor, QCursor, QDesktopServices
+from PyQt5.QtGui import QColor, QDesktopServices
 
 import html as _html
 import urllib.parse
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 from .ioc_collector import IOCCollector
 from .ioc_models import IOCRecord
@@ -81,7 +81,7 @@ class IOCStatCard(QFrame):
         # Title - uppercase, larger
         title_label = QLabel(title.upper())
         title_label.setStyleSheet(
-            f"color: #e6edf3; font-size: 12px; font-weight: 600; letter-spacing: 1px;"
+            "color: #e6edf3; font-size: 12px; font-weight: 600; letter-spacing: 1px;"
         )
         title_label.setWordWrap(True)
         layout.addWidget(title_label)

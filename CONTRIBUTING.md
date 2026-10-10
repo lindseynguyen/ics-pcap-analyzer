@@ -36,10 +36,10 @@ QT_QPA_PLATFORM=offscreen python -m pytest
    - New detection → a test that fires on the attack **and** a test that a
      benign variant stays quiet.
    - Bug fix → a regression test that fails without the fix.
-3. Run the full suite and pyflakes:
+3. Run the full suite and the linter:
    ```bash
    QT_QPA_PLATFORM=offscreen python -m pytest
-   python -m pyflakes ot_pcap_analyzer tests
+   ruff check .
    ```
 4. Keep the benign capture test green: a realistic benign capture must produce
    **zero** alerts (`tests/test_detection.py::test_benign_capture_has_no_alerts`).

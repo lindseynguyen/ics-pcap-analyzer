@@ -1492,7 +1492,7 @@ class EnhancedThreatDetector:
                             timestamp=ts, anomaly_type=f"HTTP_{attack_type}",
                             severity=config['severity'], src_ip=src_ip, dst_ip=dst_ip,
                             protocol="HTTP",
-                            description=f"HTTP header anomaly detected",
+                            description="HTTP header anomaly detected",
                             evidence={"headers": headers_raw[:200], "pattern": pattern},
                             mitre_techniques=config.get('mitre', []), confidence=0.75,
                             recommendation="Review HTTP traffic from this IP.",

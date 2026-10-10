@@ -14,17 +14,17 @@ DARK MODE SOC DASHBOARD WITH ADVANCED VISUALIZATIONS:
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTextEdit,
     QGroupBox, QFrame, QScrollArea, QSplitter, QSizePolicy,
-    QProgressBar, QCheckBox, QPushButton, QToolButton
+    QProgressBar, QCheckBox
 )
-from PyQt5.QtCore import Qt, pyqtSignal, QSize, QPropertyAnimation, QEasingCurve, QRect
-from PyQt5.QtGui import QFont, QColor, QCursor, QLinearGradient, QPainter, QPen, QPainterPath
+from PyQt5.QtCore import Qt, pyqtSignal, QSize
+from PyQt5.QtGui import QColor, QCursor, QLinearGradient, QPainter, QPen, QPainterPath
 from PyQt5.QtWidgets import QGraphicsDropShadowEffect
 
 from datetime import datetime
 from typing import List, Dict, Optional
 import html
 
-from .models import AttackChain, AttackPhase, AttackStoryline
+from .models import AttackChain, AttackStoryline
 from .storyline import ATTACK_PHASES
 from .utils import normalize_timestamp
 
@@ -460,10 +460,10 @@ class ActionChecklist(QFrame):
         super().__init__(parent)
         self._items: List[ActionChecklistItem] = []
 
-        self.setStyleSheet(f"""
-            QFrame {{
+        self.setStyleSheet("""
+            QFrame {
                 background: transparent;
-            }}
+            }
         """)
 
         layout = QVBoxLayout(self)
@@ -1767,7 +1767,7 @@ class DetailPanel(QGroupBox):
         # Key Events Section
         key_events = _safe_get_attr(storyline, 'key_events', [])
         if key_events:
-            html.append(f"""
+            html.append("""
             <div class='section'>
                 <div class='section-header'>
                     <span class='section-icon'>📊</span>
@@ -1803,7 +1803,7 @@ class DetailPanel(QGroupBox):
         # Immediate Actions Section (RED/URGENT)
         immediate_actions = (_safe_get_attr(storyline, 'immediate_actions', []))
         if immediate_actions:
-            html.append(f"""
+            html.append("""
             <div class='section-warn'>
                 <div class='section-header'>
                     <span class='section-icon'>🚨</span>
@@ -1824,7 +1824,7 @@ class DetailPanel(QGroupBox):
         # Short-term Actions Section
         short_term_actions = (_safe_get_attr(storyline, 'short_term_actions', []))
         if short_term_actions:
-            html.append(f"""
+            html.append("""
             <div class='section-amber'>
                 <div class='section-header'>
                     <span class='section-icon'>⏰</span>
@@ -1845,7 +1845,7 @@ class DetailPanel(QGroupBox):
         # Long-term Actions Section
         long_term_actions = (_safe_get_attr(storyline, 'long_term_actions', []))
         if long_term_actions:
-            html.append(f"""
+            html.append("""
             <div class='section'>
                 <div class='section-header'>
                     <span class='section-icon'>📋</span>

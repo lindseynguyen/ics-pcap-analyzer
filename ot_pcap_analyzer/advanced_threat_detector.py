@@ -23,14 +23,14 @@ NOTE: This module EXTENDS existing functionality without modifying it.
 """
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Any, Set, Tuple
-from enum import Enum, auto
+from typing import Dict, List, Optional, Any, Set
+from enum import Enum
 from collections import deque, defaultdict
 import math
 from datetime import datetime
 
 # Import existing modules
-from .models import SecurityAnomaly, OTEvent, OTAsset
+from .models import SecurityAnomaly, OTEvent
 from .ot_malware_signatures import OTMalwareDetector, MalwareDetectionResult
 
 

@@ -6,7 +6,6 @@ All constants, protocol definitions, MITRE mappings, and translations.
 
 from enum import Enum, auto
 from typing import Dict, List, Tuple, Any, Optional
-import re
 
 # =============================================================================
 # PROTOCOL DEFINITIONS

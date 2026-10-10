@@ -21,3 +21,6 @@ iocs_*.csv
 logs/
 *.pcap
 *.pcapng
+
+# ...except the synthetic sample captures shipped with the repo
+!samples/*.pcap
