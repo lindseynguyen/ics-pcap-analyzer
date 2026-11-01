@@ -233,7 +233,7 @@ Maintainer scripts: `python scripts/generate_samples.py` rebuilds the sample cap
 
 ## Related resources
 
-If you analyze OT captures, you probably also audit the systems behind them. The free **[OT/ICS Security Quick Audit Checklist 2026](https://techsavant013.gumroad.com/l/ot-ics-quick-audit-checklist?utm_source=github&utm_medium=readme)** (pay what you want) gives you 35 evidence-based checks across 9 domains, mapped to IEC 62443. For full assessments, see the **[OT/ICS Cybersecurity Audit & Risk Assessment Toolkit 2026](https://techsavant013.gumroad.com/l/ot-security-toolkit?utm_source=github&utm_medium=readme)**.
+If you analyze OT captures, you probably also audit the systems behind them. The free **[OT/ICS Security Quick Audit Checklist 2026](https://techsavant013.gumroad.com/l/ot-ics-quick-audit-checklist?utm_source=github&utm_medium=readme)** (pay what you want) gives you 35 evidence-based checks across 9 domains, mapped to IEC 62443. For full assessments, see the **[OT/ICS Cybersecurity Audit & Risk Assessment Toolkit 2026](https://techsavant013.gumroad.com/l/ot-security-toolkit?utm_source=github&utm_medium=readme)**. Working toward the ISA/IEC 62443 certificates? There are independent practice sets for the **[Fundamentals Specialist](https://techsavant013.gumroad.com/l/iec62443-fundamentals-practice-exams?utm_source=github&utm_medium=readme&utm_campaign=ics-pcap-analyzer)** and the **[Risk Assessment Specialist (IC33)](https://techsavant013.gumroad.com/l/ic33-risk-assessment-practice-kit?utm_source=github&utm_medium=readme&utm_campaign=ics-pcap-analyzer)**.
 
 ## Contributing
 
