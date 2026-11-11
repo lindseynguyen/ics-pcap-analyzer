@@ -4,7 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
 [![Lint: ruff](https://img.shields.io/badge/lint-ruff-orange.svg)](https://github.com/astral-sh/ruff)
-[![OT/ICS Audit Checklist](https://img.shields.io/badge/free-OT%2FICS%20Audit%20Checklist-ff90e8.svg)](https://techsavant013.gumroad.com/l/ot-ics-quick-audit-checklist?utm_source=github&utm_medium=readme&utm_campaign=badge)
+[![OT/ICS Audit & Risk Toolkit](https://img.shields.io/badge/OT%2FICS-Audit%20%26%20Risk%20Toolkit-ff90e8.svg)](https://techsavant013.gumroad.com/l/ot-security-toolkit?utm_source=github&utm_medium=readme&utm_campaign=badge)
 
 Offline analyzer for **OT/ICS network captures** (PCAP / PCAPNG). It decodes
 industrial protocols, detects attacks on both the OT and IT layers, correlates
@@ -33,9 +33,10 @@ python -m ot_pcap_analyzer --cli samples/attack_scenarios.pcap --advanced -o rep
 No capture of your own yet? The [`samples/`](samples/README.md) folder has a benign plant
 capture, one packet of every supported OT protocol, and a multi-stage attack scenario.
 
-> 🛡️ **Auditing the plant behind the traffic?** Pair this tool with the free
-> **[OT/ICS Security Quick Audit Checklist 2026](https://techsavant013.gumroad.com/l/ot-ics-quick-audit-checklist?utm_source=github&utm_medium=readme&utm_campaign=quickstart)**
-> — 35 evidence-based checks across 9 domains, mapped to IEC 62443 (pay what you want).
+> 🛡️ **Auditing the plant behind the traffic?** Pair this tool with the
+> **[OT/ICS Cybersecurity Audit & Risk Assessment Toolkit 2026](https://techsavant013.gumroad.com/l/ot-security-toolkit?utm_source=github&utm_medium=readme&utm_campaign=quickstart)**
+> — audit workbook, field guide and report templates mapped to IEC 62443, to turn capture
+> findings into a full OT risk assessment.
 
 > **Project status: 1.0 / beta.** The detection logic is covered by an automated
 > test suite built on synthetic captures. It has not yet been validated broadly
@@ -233,7 +234,7 @@ Maintainer scripts: `python scripts/generate_samples.py` rebuilds the sample cap
 
 ## Related resources
 
-If you analyze OT captures, you probably also audit the systems behind them. The free **[OT/ICS Security Quick Audit Checklist 2026](https://techsavant013.gumroad.com/l/ot-ics-quick-audit-checklist?utm_source=github&utm_medium=readme)** (pay what you want) gives you 35 evidence-based checks across 9 domains, mapped to IEC 62443. For full assessments, see the **[OT/ICS Cybersecurity Audit & Risk Assessment Toolkit 2026](https://techsavant013.gumroad.com/l/ot-security-toolkit?utm_source=github&utm_medium=readme)**. Working toward the ISA/IEC 62443 certificates? There are independent practice sets for the **[Fundamentals Specialist](https://techsavant013.gumroad.com/l/iec62443-fundamentals-practice-exams?utm_source=github&utm_medium=readme&utm_campaign=ics-pcap-analyzer)** and the **[Risk Assessment Specialist (IC33)](https://techsavant013.gumroad.com/l/ic33-risk-assessment-practice-kit?utm_source=github&utm_medium=readme&utm_campaign=ics-pcap-analyzer)**.
+If you analyze OT captures, you probably also audit the systems behind them. The **[OT/ICS Cybersecurity Audit & Risk Assessment Toolkit 2026](https://techsavant013.gumroad.com/l/ot-security-toolkit?utm_source=github&utm_medium=readme&utm_campaign=ics-pcap-analyzer)** gives you an audit workbook, field guide and report templates mapped to IEC 62443. When the capture shows traffic crossing zones it should not, the **[Substation OT Firewall Audit Kit](https://techsavant013.gumroad.com/l/substation-ot-firewall-audit-kit?utm_source=github&utm_medium=readme&utm_campaign=ics-pcap-analyzer)** helps you review the firewall rules and zone/conduit boundaries behind it. Working toward the ISA/IEC 62443 certificates? There are independent practice sets for the **[Fundamentals Specialist](https://techsavant013.gumroad.com/l/iec62443-fundamentals-practice-exams?utm_source=github&utm_medium=readme&utm_campaign=ics-pcap-analyzer)** and the **[Risk Assessment Specialist (IC33)](https://techsavant013.gumroad.com/l/ic33-risk-assessment-practice-kit?utm_source=github&utm_medium=readme&utm_campaign=ics-pcap-analyzer)**.
 
 ## Contributing
 
